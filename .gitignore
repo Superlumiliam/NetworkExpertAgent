@@ -1,0 +1,12 @@
+#环境变量
+.env
+
+#虚拟环境
+venv
+
+#数据库
+data
+
+#工具缓存
+__pycache__
+config/__pycache__

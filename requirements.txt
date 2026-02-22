@@ -1,0 +1,12 @@
+mcp
+httpx
+chromadb
+langchain
+langchain_community
+langchain-deepseek
+langchain-text-splitters
+langchain-huggingface
+sentence-transformers
+tiktoken
+pypdf
+python-dotenv
