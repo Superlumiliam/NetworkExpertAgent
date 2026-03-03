@@ -6,6 +6,7 @@ langchain_community
 langchain-deepseek
 langchain-text-splitters
 langchain-huggingface
+langsmith
 sentence-transformers
 tiktoken
 pypdf

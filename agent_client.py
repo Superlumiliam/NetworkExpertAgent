@@ -10,9 +10,21 @@ from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from os import getenv
 import config.settings as cfg
+try:
+    from langsmith.run_trees import traceable
+except Exception:
+    traceable = None
+
+from rfc_optimizer import RFCOptimizer
 
 # Load environment variables from .env file
 load_dotenv()
+
+async def call_mcp_tool_traced(session, function_name, function_args):
+    result = await session.call_tool(function_name, function_args)
+    return result
+if traceable:
+    call_mcp_tool_traced = traceable(name="mcp_tool_call")(call_mcp_tool_traced)
 
 async def run_agent():
     # check api key
@@ -20,6 +32,9 @@ async def run_agent():
     if not api_key:
         print("Please set OPENROUTER_API_KEY environment variable.", file=sys.stderr)
         return
+    ls_enabled = os.getenv("LANGCHAIN_TRACING_V2", "").lower() in ("1", "true", "yes")
+    if ls_enabled:
+        print("LangSmith tracing is enabled.", file=sys.stderr)
 
     # Initialize the model with OpenRouter's base URL
     model = init_chat_model(
@@ -29,6 +44,9 @@ async def run_agent():
         api_key=api_key,
 
     )
+    
+    # Initialize Optimizer
+    optimizer = RFCOptimizer(model)
 
     # Define the server parameters
     command = "python"
@@ -81,11 +99,22 @@ async def run_agent():
                     break
                 
                 messages.append({"role": "user", "content": user_input})
+                
+                # Pre-RAG Optimization: Analyze and download missing RFCs
+                print("\n[Optimizer] Analyzing user query...", file=sys.stderr)
+                try:
+                    processed_rfcs = await optimizer.process_query_pre_rag(user_input, session)
+                    if processed_rfcs:
+                        print(f"[Optimizer] Added relevant RFCs: {processed_rfcs}", file=sys.stderr)
+                except Exception as e:
+                    print(f"[Optimizer] Error in pre-processing: {e}", file=sys.stderr)
+                
                 start_time = time.perf_counter()
                 # Loop for Agent execution (Think-Act-Observe loop)
                 while True:
                     try:
-                        response = model_with_tools.invoke(messages)
+                        runnable = model_with_tools.with_config({"run_name": "AgentStep", "tags": ["RFCexpert", "agent", "mcp", f"model:{cfg.DEFAULT_MODEL}"]})
+                        response = runnable.invoke(messages)
                         
                         # Handle tool calls
                         if response.tool_calls:
@@ -99,8 +128,7 @@ async def run_agent():
                                 function_name = tool_call['name']
                                 function_args = tool_call['args']
                                 
-                                # Call the tool via MCP Session
-                                result = await session.call_tool(function_name, function_args)
+                                result = await call_mcp_tool_traced(session, function_name, function_args)
                                 
                                 # MCP result content is a list of Content objects (TextContent usually)
                                 tool_output = ""
@@ -108,6 +136,21 @@ async def run_agent():
                                     for content in result.content:
                                         if content.type == "text":
                                             tool_output += content.text
+                                
+                                # Context pollution detection
+                                if function_name == "search_rfc_knowledge":
+                                    try:
+                                        is_polluted = await optimizer.detect_context_pollution(user_input, tool_output)
+                                        if is_polluted:
+                                            print("[Optimizer] Context pollution detected! RAG results seem irrelevant.", file=sys.stderr)
+                                            tool_output += "\n\n[System Warning: The retrieved context seems irrelevant. Please verify the protocol name and try downloading the RFC if missing.]"
+                                            
+                                            # Trigger RFC completion flow (re-attempt download if missed)
+                                            processed_rfcs_retry = await optimizer.process_query_pre_rag(user_input, session)
+                                            if processed_rfcs_retry:
+                                                print(f"[Optimizer] Retry: Added relevant RFCs: {processed_rfcs_retry}", file=sys.stderr)
+                                    except Exception as e:
+                                        print(f"[Optimizer] Error in context pollution detection: {e}", file=sys.stderr)
                                 
                                 messages.append({
                                     "role": "tool",
