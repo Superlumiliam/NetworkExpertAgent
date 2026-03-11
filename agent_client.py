@@ -49,7 +49,7 @@ async def run_agent():
     optimizer = RFCOptimizer(model)
 
     # Define the server parameters
-    command = "python"
+    command = sys.executable
     server_params = StdioServerParameters(
         command=command,
         args=[cfg.SERVER_SCRIPT],

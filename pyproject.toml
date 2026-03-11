@@ -1,0 +1,21 @@
+[project]
+name = "RFCExpertAgent"
+version = "0.1.0"
+description = "RFC Expert Agent with RAG and MCP"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "mcp",
+  "httpx",
+  "chromadb",
+  "langchain",
+  "langchain-openai",
+  "langchain_community",
+  "langchain-text-splitters",
+  "langchain-huggingface",
+  "sentence-transformers",
+  "python-dotenv",
+]
+
+[project.optional-dependencies]
+tracing = ["langsmith"]

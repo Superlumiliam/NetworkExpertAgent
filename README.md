@@ -48,3 +48,9 @@ An AI Agent that specializes in interpreting RFC network protocols using RAG (Re
 
 - **Embeddings**: Modify `rag_utils.py` to use different embedding models (e.g., HuggingFace) if you want to avoid OpenAI for embeddings.
 - **LLM**: The agent uses `gpt-4o` by default. You can change the model in `agent_client.py`.
+
+## TODO LIST
+- [ ] 优化回答速度，现在通过rag校验太慢了
+- [ ] 增加agent todo list
+- [ ] 让模型总是先思考对应的rfc 然后再查询rag，不要一来就查询rag，能模型自己回答的问题不要用tools,这里看能不能用上skill
+- [ ] 把遇到的问题整理成文章

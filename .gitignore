@@ -2,7 +2,7 @@
 .env
 
 #虚拟环境
-venv
+.venv
 
 #数据库
 data
@@ -10,3 +10,5 @@ data
 #工具缓存
 __pycache__
 config/__pycache__
+
+.DS_Store
