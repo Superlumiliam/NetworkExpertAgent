@@ -1,56 +1,82 @@
-# RFC Expert Agent
+# Network Expert Agent
 
-An AI Agent that specializes in interpreting RFC network protocols using RAG (Retrieval-Augmented Generation) and MCP (Model Context Protocol).
+An advanced AI Agent specializing in network protocols and RFCs, powered by RAG (Retrieval-Augmented Generation) and LangGraph.
 
 ## Features
 
-- **Automated RFC Download**: Fetches RFC text directly from `rfc-editor.org`.
-- **RAG Knowledge Base**: Chunks and stores RFC content in a local ChromaDB vector database.
-- **MCP Integration**: Implements a custom MCP Server (`rfc_server.py`) that exposes tools to the agent.
-- **Interactive Agent**: A CLI agent (`agent_client.py`) that queries the knowledge base to answer user questions.
+- **Intelligent Routing**: Automatically directs queries to either the RFC Expert or a General Chat Agent for faster responses.
+- **Stateful Execution**: Uses `LangGraph` to manage the agent's workflow (Analyze -> CheckLocal -> Download/Search -> Answer), reducing hallucinations.
+- **Automated RFC Management**: Automatically downloads and indexes RFC documents from `rfc-editor.org` when needed.
+- **Local RAG Knowledge Base**: Efficiently stores and retrieves protocol details using ChromaDB and local embeddings (HuggingFace).
+- **Skill-Based Decision Making**: Dynamically loads skills to enhance agent capabilities.
+- **Comprehensive Testing**: Includes unit tests and a benchmark suite for performance evaluation.
 
 ## Prerequisites
 
-- Python 3.10 or higher
-- OpenAI API Key
+- Python 3.12 or higher
+- OpenRouter API Key (for LLM access)
 
 ## Installation
 
-1.  **Clone/Download this repository.**
-2.  **Install dependencies:**
+1.  **Clone the repository.**
+2.  **Install dependencies using `uv`:**
     ```bash
-    pip install -r requirements.txt
+    # Install uv if not present
+    pip install uv
+    
+    # Sync dependencies
+    uv sync
     ```
 
 ## Usage
 
-1.  **Set your OpenAI API Key:**
-    - Windows (PowerShell): `$env:OPENAI_API_KEY="your-key-here"`
-    - Linux/Mac: `export OPENAI_API_KEY="your-key-here"`
+1.  **Set Environment Variables:**
+    Create a `.env` file in the root directory:
+    ```env
+    OPENROUTER_API_KEY=your_openrouter_api_key_here
+    DEFAULT_MODEL=deepseek/deepseek-chat  # Or your preferred model
+    ENABLE_LANGSMITH_TRACING=false        # Set to true for debugging
+    ```
 
 2.  **Run the Agent:**
     ```bash
-    python agent_client.py
+    uv run network-expert
+    # Or directly with python:
+    # python -m src.main
     ```
 
 3.  **Interact with the Agent:**
-    - Ask questions like: "What is the frame structure in HTTP/2?"
-    - If the agent doesn't know, tell it to download the RFC: "Download RFC 7540".
-    - Then ask the question again.
+    - Ask technical questions: "What is the default query interval in IGMPv3?"
+    - Ask general questions: "Hello, how are you?" (routed to General Agent)
+    - The agent will automatically download relevant RFCs if they are missing from the knowledge base.
 
-## Architecture
+## Project Structure
 
-- **`rag_utils.py`**: Core logic for downloading, chunking, embedding (OpenAI), and storing (ChromaDB) RFCs.
-- **`rfc_server.py`**: An MCP Server that wraps `rag_utils.py` and exposes `add_rfc` and `search_rfc_knowledge` as tools.
-- **`agent_client.py`**: An MCP Client that connects to the server via stdio, manages the chat loop, and uses OpenAI to generate answers based on tool outputs.
+```text
+NetworkExpertAgent/
+├── src/                    # Source Code
+│   ├── main.py             # Entry Point
+│   ├── core/               # Core Components (Router, State)
+│   ├── agents/             # Agent Implementations (RFC, General)
+│   ├── tools/              # Tools (RFC Management, RAG)
+│   ├── skills/             # Skill Definitions
+│   └── config/             # Configuration
+├── tests/                  # Tests
+│   ├── benchmark.py        # Performance Benchmark
+│   ├── quiz.md             # Benchmark Questions
+│   └── test_agents.py      # Unit Tests
+├── docs/                   # Documentation
+└── pyproject.toml          # Project Configuration
+```
 
-## Customization
+## Testing
 
-- **Embeddings**: Modify `rag_utils.py` to use different embedding models (e.g., HuggingFace) if you want to avoid OpenAI for embeddings.
-- **LLM**: The agent uses `gpt-4o` by default. You can change the model in `agent_client.py`.
+Run the unit tests:
+```bash
+uv run python -m unittest tests/test_agents.py
+```
 
-## TODO LIST
-- [ ] 优化回答速度，现在通过rag校验太慢了
-- [ ] 增加agent todo list
-- [ ] 让模型总是先思考对应的rfc 然后再查询rag，不要一来就查询rag，能模型自己回答的问题不要用tools,这里看能不能用上skill
-- [ ] 把遇到的问题整理成文章
+Run the benchmark (requires API key):
+```bash
+uv run tests/benchmark.py
+```

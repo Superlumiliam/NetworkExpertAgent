@@ -1,30 +1,13 @@
-import os
-import sys
 import httpx
+import sys
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Optional
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-# Switch from OpenAIEmbeddings to HuggingFaceEmbeddings to remove OpenAI dependency
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
-import config.settings as cfg
+from langchain_core.tools import tool
 
-def get_embeddings():
-    """Initialize HuggingFace Embeddings (runs locally, no API key needed)."""
-    print(f"Loading embedding model: {cfg.EMBEDDING_MODEL_NAME}...", file=sys.stderr)
-    return HuggingFaceEmbeddings(model_name=cfg.EMBEDDING_MODEL_NAME)
-
-def get_vector_store():
-    """Initialize or load the Chroma vector store."""
-    embedding_function = get_embeddings()
-    # Ensure directory exists
-    os.makedirs(cfg.CHROMA_PATH, exist_ok=True)
-    return Chroma(
-        persist_directory=cfg.CHROMA_PATH,
-        embedding_function=embedding_function,
-        collection_name="rfc_knowledge_base"
-    )
+import src.config.settings as cfg
+from src.tools.rag_tools import add_documents, query_knowledge_base, check_rfc_exists
 
 async def download_rfc_text(rfc_id: str) -> str:
     """Download RFC text from the official editor asynchronously."""
@@ -59,8 +42,14 @@ def chunk_text(text: str, rfc_id: str) -> List[Document]:
         
     return docs
 
-async def add_rfc_to_knowledge_base(rfc_id: str) -> str:
-    """Download, chunk, and store RFC in the vector database."""
+@tool
+async def add_rfc(rfc_id: str) -> str:
+    """
+    Download and index an RFC document into the vector database.
+    
+    Args:
+        rfc_id: The RFC number (e.g., "7540" or "rfc7540").
+    """
     try:
         text = await download_rfc_text(rfc_id)
         
@@ -68,30 +57,54 @@ async def add_rfc_to_knowledge_base(rfc_id: str) -> str:
         chunks = await asyncio.to_thread(chunk_text, text, rfc_id)
         
         # IO-bound (disk) task in thread pool
-        def store():
-            db = get_vector_store()
-            db.add_documents(chunks)
-            
-        await asyncio.to_thread(store)
+        await asyncio.to_thread(add_documents, chunks)
         
         return f"Successfully added RFC {rfc_id} to knowledge base. ({len(chunks)} chunks)"
     except Exception as e:
         return f"Error adding RFC {rfc_id}: {str(e)}"
 
-async def query_rfc_knowledge_base(query: str, n_results: int = 25) -> List[str]:
-    """Query the vector database for relevant context."""
+@tool
+async def check_rfc_status(rfc_id: str) -> bool:
+    """
+    Check if an RFC is already indexed in the knowledge base.
+    
+    Args:
+        rfc_id: The RFC number (e.g., "7540" or "rfc7540").
+    """
+    try:
+        # Ensure rfc_id is just the number
+        rfc_id = str(rfc_id).lower().replace("rfc", "").strip()
+        
+        def check():
+            return check_rfc_exists(rfc_id)
+            
+        exists = await asyncio.to_thread(check)
+        return exists
+    except Exception:
+        return False
+
+@tool
+async def search_rfc_knowledge(query: str) -> str:
+    """
+    Search the indexed RFC knowledge base for relevant sections.
+    
+    Args:
+        query: The search query or question about a protocol.
+    """
     try:
         def search():
-            db = get_vector_store()
-            results = db.similarity_search(query, k=n_results)
+            results = query_knowledge_base(query, n_results=5)
             return results
             
         results = await asyncio.to_thread(search)
         
+        if not results:
+            return "No relevant information found in the knowledge base."
+            
         context_list = []
         for doc in results:
             context_list.append(f"[Source: {doc.metadata.get('source', 'Unknown')}]\n{doc.page_content}")
             
-        return context_list
+        return "\n\n---\n\n".join(context_list)
     except Exception as e:
-        return [f"Error querying knowledge base: {str(e)}"]
+        return f"Error querying knowledge base: {str(e)}"
