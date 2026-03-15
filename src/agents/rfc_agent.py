@@ -38,7 +38,7 @@ def analyze(state: AgentState):
     Your task:
     1. Identify if the user is asking about a specific RFC (e.g., "What is in RFC 7540?").
     2. Extract the RFC number if present.
-    3. If the user is asking about a specific protocol or technical detail but hasn't mentioned an RFC number, try to identify the most relevant standard RFC number for that topic (e.g., PIM -> 7761, OSPFv3 -> 5340).
+    3. If the user is asking about a specific protocol or technical detail but hasn't mentioned an RFC number, try to identify the most relevant standard RFC number for that topic (e.g., PIM -> 7761, OSPFv3 -> 5340, IGMPv3 -> 3376).
     4. Formulate a search query for the knowledge base. The query MUST be in English to better match RFC content (e.g., "Join/Prune Interval default value").
     
     Return a JSON object with:
