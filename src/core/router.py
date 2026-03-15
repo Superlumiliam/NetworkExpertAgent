@@ -33,7 +33,7 @@ def route_question(question: str) -> Literal["rfc_expert", "general_agent"]:
     
     try:
         route = chain.invoke({"question": question}).strip().lower()
-        if "rfc" in route or "expert" in route:
+        if "rfc_expert" in route:
             return "rfc_expert"
         return "general_agent"
     except Exception as e:
