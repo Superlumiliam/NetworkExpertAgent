@@ -51,6 +51,7 @@ async def add_rfc(rfc_id: str) -> str:
         rfc_id: The RFC number (e.g., "7540" or "rfc7540").
     """
     try:
+        rfc_id = str(rfc_id).lower().replace("rfc", "").strip()
         text = await download_rfc_text(rfc_id)
         
         # CPU-bound tasks in thread pool
