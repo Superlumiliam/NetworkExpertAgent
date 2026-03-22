@@ -45,10 +45,17 @@ An advanced AI Agent specializing in network protocols and RFCs, powered by RAG 
     # python -m src.main
     ```
 
+    Run the Web UI:
+    ```bash
+    uv run network-expert-web
+    # Open http://127.0.0.1:8000 in your browser
+    ```
+
 3.  **Interact with the Agent:**
     - Ask technical questions: "What is the default query interval in IGMPv3?"
     - Ask general questions: "Hello, how are you?" (routed to General Agent)
     - The agent will automatically download relevant RFCs if they are missing from the knowledge base.
+    - Or use the browser UI for a chat-style workflow with the same backend capabilities.
 
 ## Project Structure
 
@@ -90,4 +97,3 @@ Baseline runtime grading per question:
 - 30-60s: good
 - 60-120s: pass
 - 120s: fail
-
