@@ -89,5 +89,5 @@ Baseline runtime grading per question:
 - 0-30s: excellent
 - 30-60s: good
 - 60-120s: pass
-- >120s: fail
+- 120s: fail
 
