@@ -80,3 +80,14 @@ Run the benchmark (requires API key):
 ```bash
 uv run tests/benchmark.py
 ```
+
+The benchmark score now combines:
+- Answer accuracy: 70%
+- Runtime: 30%
+
+Baseline runtime grading per question:
+- 0-30s: excellent
+- 30-60s: good
+- 60-120s: pass
+- >120s: fail
+

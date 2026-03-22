@@ -3,7 +3,7 @@ import time
 import re
 import sys
 import os
-from typing import List, Dict
+from typing import Dict, List
 
 # Add project root to path
 sys.path.append(os.getcwd())
@@ -13,6 +13,12 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import src.config.settings as cfg
+from tests.benchmark_metrics import (
+    ACCURACY_WEIGHT,
+    TIME_WEIGHT,
+    combine_weighted_score,
+    evaluate_time,
+)
 
 async def evaluate_answer(question: str, expected: str, actual: str) -> int:
     """
@@ -74,13 +80,22 @@ def parse_quiz(file_path: str) -> List[Dict[str, str]]:
     return questions
 
 async def run_benchmark():
-    """Run the benchmark."""
+    """Run the benchmark with accuracy and fixed-threshold time scoring."""
     print("Starting Benchmark...")
     quiz_path = "tests/quiz.md"
     questions = parse_quiz(quiz_path)
+    print("Fixed Time Thresholds: 0-30s=优秀, 30-60s=良好, 60-120s=及格, >120s=不及格")
     
-    total_score = 0
+    total_accuracy_score = 0
+    total_time_score = 0
+    total_final_score = 0
     total_time = 0
+    rating_counts = {
+        "excellent": 0,
+        "good": 0,
+        "pass": 0,
+        "fail": 0,
+    }
     results = []
     
     for i, item in enumerate(questions):
@@ -99,25 +114,60 @@ async def run_benchmark():
         duration = end_time - start_time
         total_time += duration
         
-        score = await evaluate_answer(q, expected, actual)
-        total_score += score
+        accuracy_score = await evaluate_answer(q, expected, actual)
+        time_evaluation = evaluate_time(duration)
+        final_score = combine_weighted_score(accuracy_score, time_evaluation.score)
+
+        total_accuracy_score += accuracy_score
+        total_time_score += time_evaluation.score
+        total_final_score += final_score
+        rating_counts[time_evaluation.rating] += 1
         
-        print(f"Time: {duration:.2f}s | Score: {score}/10")
+        print(
+            f"Time: {duration:.2f}s | "
+            f"Accuracy: {accuracy_score}/10 | "
+            f"Time Grade: {time_evaluation.label} ({time_evaluation.score}/10) | "
+            f"Final: {final_score:.2f}/10"
+        )
+        print(
+            "Time Thresholds: "
+            f"excellent <= {time_evaluation.excellent_threshold:.2f}s, "
+            f"good <= {time_evaluation.good_threshold:.2f}s, "
+            f"pass <= {time_evaluation.pass_threshold:.2f}s"
+        )
         print(f"Actual Answer: {actual[:100]}...")
         
         results.append({
             "question": q,
-            "score": score,
-            "time": duration
+            "accuracy_score": accuracy_score,
+            "time_score": time_evaluation.score,
+            "time_rating": time_evaluation.label,
+            "final_score": final_score,
+            "time": duration,
         })
         
-    avg_score = total_score / len(questions) if questions else 0
+    avg_accuracy_score = total_accuracy_score / len(questions) if questions else 0
+    avg_time_score = total_time_score / len(questions) if questions else 0
+    avg_final_score = total_final_score / len(questions) if questions else 0
     avg_time = total_time / len(questions) if questions else 0
     
     print("\n" + "="*50)
     print(f"Benchmark Complete")
-    print(f"Average Score: {avg_score:.2f}/10")
+    print(
+        f"Weighted Score Rule: "
+        f"accuracy {ACCURACY_WEIGHT:.0%} + time {TIME_WEIGHT:.0%}"
+    )
+    print(f"Average Accuracy Score: {avg_accuracy_score:.2f}/10")
+    print(f"Average Time Score: {avg_time_score:.2f}/10")
+    print(f"Average Final Score: {avg_final_score:.2f}/10")
     print(f"Average Time: {avg_time:.2f}s")
+    print(
+        "Time Rating Counts: "
+        f"优秀={rating_counts['excellent']}, "
+        f"良好={rating_counts['good']}, "
+        f"及格={rating_counts['pass']}, "
+        f"不及格={rating_counts['fail']}"
+    )
     print("="*50)
 
 if __name__ == "__main__":
