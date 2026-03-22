@@ -14,6 +14,6 @@ HTTP/2的Stream ID有什么规则？
 根据RFC 7540，客户端发起的Stream ID必须是奇数，服务端发起的Stream ID必须是偶数。Stream 0用于连接控制消息。
 
 ### Question 4
-What is the purpose of the Identification field in IPv4 header?
+IGMPv3协议中，组播组235.0.0.1的source是INCLUDE(10.0.0.1,10.0.0.2),此时收到igmp report报文为TO_EX(10.0.0.2,10.0.0.3),那么New Router State应该是什么？
 ### Expected Answer
-According to RFC 791, the Identification field is used to aid in assembling the fragments of a datagram.
+根据rfc6.4.2节，新路由器状态为EXCLUDE(10.0.0.2,10.0.0.3)
