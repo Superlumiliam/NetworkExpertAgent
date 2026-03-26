@@ -20,9 +20,9 @@ HTML_PAGE = """<!DOCTYPE html>
     <header class="topbar">
       <div class="brand-block">
         <p class="eyebrow">Network Expert Agent</p>
-        <h1>用对话的方式查询网络协议与 RFC 细节</h1>
+        <h1>🐳</h1>
         <p class="intro">
-          面向当前项目已有能力设计：输入问题，系统自动路由到 RFC 专家或通用助手，并把结果以清晰的对话气泡返回。
+          你好呀👋我是你的网络问答专家。
         </p>
       </div>
       <div class="status-pill" id="serviceStatus">
@@ -45,7 +45,7 @@ HTML_PAGE = """<!DOCTYPE html>
           <article class="message assistant welcome">
             <div class="bubble">
               <p class="bubble-role">Assistant</p>
-              <p>你好，我是 Network Expert Agent。你可以问我 RFC、网络协议细节，或者一般性问题。</p>
+              <p>你好，我是 Network Expert Agent。你可以问我网络协议细节，或者一般性问题。</p>
             </div>
           </article>
         </div>
@@ -70,11 +70,11 @@ HTML_PAGE = """<!DOCTYPE html>
       <aside class="support-region" aria-label="能力说明">
         <section class="info-block">
           <p class="section-kicker">Capabilities</p>
-          <h2>和项目能力保持一致</h2>
+          <h2>可以做什么</h2>
           <ul class="feature-list">
             <li>自动判断问题更适合 RFC 专家还是通用对话助手。</li>
             <li>需要时会查询本地知识库，并补充下载对应 RFC 文档。</li>
-            <li>返回结果只围绕问答本身，不包含当前项目没有实现的扩展操作。</li>
+            <li>根据RFC文档准确回答网络相关问题，避免幻觉。</li>
           </ul>
         </section>
 
