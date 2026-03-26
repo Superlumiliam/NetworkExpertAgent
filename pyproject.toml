@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 network-expert = "src.main:main"
+network-expert-web = "src.web.server:main"
 
 [build-system]
 requires = ["hatchling"]
