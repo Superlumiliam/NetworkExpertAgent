@@ -1,20 +1,11 @@
-# RFC Expert Skills
+# RFC Expert Skills (Legacy Note)
 
-## Core Skills
+`rfc_agent` 从 v0.3.0 起改为使用渐进式披露 skill：
 
-### 1. Retrieve RFC Document
-- **Description**: Download and index an RFC document from the IETF website.
-- **When to use**: When the user asks about a specific RFC number (e.g., "What is RFC 7540?") or when the knowledge base does not contain the necessary information to answer a question about a specific protocol.
-- **Tool**: `add_rfc(rfc_id)`
+- `src/skills/rfc_agent/base.md`
+- `src/skills/rfc_agent/intent.md`
+- `src/skills/rfc_agent/planning.md`
+- `src/skills/rfc_agent/retrieval.md`
+- `src/skills/rfc_agent/answering.md`
 
-### 2. Search Knowledge Base
-- **Description**: Search the local knowledge base for relevant sections of RFC documents.
-- **When to use**: When the user asks specific technical questions about protocols, headers, fields, or behaviors defined in RFCs.
-- **Tool**: `search_rfc_knowledge(query)`
-
-## Decision Process
-
-1. **Identify Protocol/RFC**: Extract the RFC number or protocol name from the user's question.
-2. **Check Local Availability**: Check if the RFC is already in the knowledge base (conceptually). If not, download it.
-3. **Search**: Query the knowledge base with specific terms related to the user's question.
-4. **Synthesize**: Combine the search results to form a comprehensive answer.
+本文件保留仅用于兼容说明，不再作为 `rfc_agent` 的实际加载入口。
