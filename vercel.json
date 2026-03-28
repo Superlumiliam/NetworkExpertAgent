@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.py"
+    }
+  ],
+  "functions": {
+    "index.py": {
+      "memory": 3009,
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,docs/**,.venv/**,data/**,__pycache__/**,.pytest_cache/**,.mypy_cache/**,.ruff_cache/**}"
+    }
+  }
+}
