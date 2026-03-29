@@ -1,8 +1,7 @@
 import unittest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import patch, AsyncMock
 import sys
 import os
-import asyncio
 
 # Set dummy env vars BEFORE importing anything from src
 os.environ["OPENROUTER_API_KEY"] = "dummy_key"
@@ -12,10 +11,7 @@ os.environ["ENABLE_LANGSMITH_TRACING"] = "false"
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from src.core.router import route_question
 from src.agents.rfc_agent import check_local, search, download
-from src.agents.general_agent import general_chat
-from langchain_core.messages import HumanMessage, AIMessage
 
 class TestRFCAgent(unittest.IsolatedAsyncioTestCase):
     
