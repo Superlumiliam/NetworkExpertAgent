@@ -5,7 +5,7 @@
 .venv
 
 #无关文档
-docs/*
+docs
 
 #数据库
 data
@@ -16,4 +16,3 @@ config/__pycache__
 
 .DS_Store
 .codex
-.vercel

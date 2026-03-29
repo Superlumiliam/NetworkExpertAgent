@@ -37,12 +37,8 @@ def chunk_text(text: str, rfc_id: str) -> List[Document]:
     
     docs = text_splitter.create_documents([text])
     # Add metadata
-    for index, doc in enumerate(docs):
-        doc.metadata = {
-            "source": f"RFC {rfc_id}",
-            "rfc_id": rfc_id,
-            "chunk_index": index,
-        }
+    for doc in docs:
+        doc.metadata = {"source": f"RFC {rfc_id}", "rfc_id": rfc_id}
         
     return docs
 
