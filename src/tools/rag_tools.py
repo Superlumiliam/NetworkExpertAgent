@@ -1,20 +1,40 @@
 import os
 import sys
 from typing import List, Optional
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 import src.config.settings as cfg
 
 _vector_store: Optional[Chroma] = None
-_embeddings: Optional[HuggingFaceEmbeddings] = None
+_embeddings: Optional[OpenAIEmbeddings] = None
 
-def get_embeddings() -> HuggingFaceEmbeddings:
-    """Initialize HuggingFace Embeddings (runs locally, no API key needed)."""
+def get_embeddings() -> OpenAIEmbeddings:
+    """Initialize remote embeddings using an OpenAI-compatible API."""
     global _embeddings
     if _embeddings is None:
-        print(f"Loading embedding model: {cfg.EMBEDDING_MODEL_NAME}...", file=sys.stderr)
-        _embeddings = HuggingFaceEmbeddings(model_name=cfg.EMBEDDING_MODEL_NAME)
+        missing = []
+        if not cfg.EMBEDDING_API_KEY:
+            missing.append("EMBEDDING_API_KEY")
+        if not cfg.EMBEDDING_MODEL_NAME:
+            missing.append("EMBEDDING_MODEL_NAME")
+        if missing:
+            missing_vars = ", ".join(missing)
+            raise RuntimeError(
+                "Remote embeddings are not configured. Missing "
+                f"{missing_vars}. Add them to your .env file before using RFC indexing/search."
+            )
+
+        print(
+            "Loading remote embedding model "
+            f"'{cfg.EMBEDDING_MODEL_NAME}' from {cfg.EMBEDDING_API_BASE_URL}...",
+            file=sys.stderr,
+        )
+        _embeddings = OpenAIEmbeddings(
+            model=cfg.EMBEDDING_MODEL_NAME,
+            api_key=cfg.EMBEDDING_API_KEY,
+            base_url=cfg.EMBEDDING_API_BASE_URL,
+        )
     return _embeddings
 
 def get_vector_store() -> Chroma:

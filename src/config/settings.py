@@ -17,8 +17,9 @@ CHROMA_PATH = os.path.join(os.getcwd(), "data", "chroma_db")
 RFC_BASE_URL = "https://www.rfc-editor.org/rfc/rfc{rfc_id}.txt"
 
 # Embedding Configuration
-# Use a lightweight, high-performance local embedding model
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_API_BASE_URL = os.getenv("EMBEDDING_API_BASE_URL")
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY")
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME")
 
 # LangSmith Configuration
 # Check if API key is present, if so, enable tracing unless explicitly disabled

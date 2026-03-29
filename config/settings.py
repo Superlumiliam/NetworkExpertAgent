@@ -9,5 +9,7 @@ MODEL_PROVIDER = "openai"
 # Configuration rag_utils.py
 CHROMA_PATH = "./data/chroma_db"
 RFC_BASE_URL = "https://www.rfc-editor.org/rfc/rfc{rfc_id}.txt"
-# Use a lightweight, high-performance local embedding model
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
+# embedding model
+EMBEDDING_API_BASE_URL = "https://api.openai.com/v1"
+EMBEDDING_MODEL_NAME = "text-embedding-3-small"

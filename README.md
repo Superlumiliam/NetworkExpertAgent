@@ -7,7 +7,7 @@ An advanced AI Agent specializing in network protocols and RFCs, powered by RAG 
 - **Intelligent Routing**: Automatically directs queries to either the RFC Expert or a General Chat Agent for faster responses.
 - **Stateful Execution**: Uses `LangGraph` to manage the agent's workflow (Analyze -> CheckLocal -> Download/Search -> Answer), reducing hallucinations.
 - **Automated RFC Management**: Automatically downloads and indexes RFC documents from `rfc-editor.org` when needed.
-- **Local RAG Knowledge Base**: Efficiently stores and retrieves protocol details using ChromaDB and local embeddings (HuggingFace).
+- **Lightweight RAG Knowledge Base**: Efficiently stores and retrieves protocol details using ChromaDB and a remote embedding API.
 - **Skill-Based Decision Making**: Dynamically loads skills to enhance agent capabilities.
 - **Comprehensive Testing**: Includes unit tests and a benchmark suite for performance evaluation.
 
@@ -36,7 +36,16 @@ An advanced AI Agent specializing in network protocols and RFCs, powered by RAG 
     OPENROUTER_API_KEY=your_openrouter_api_key_here
     DEFAULT_MODEL=deepseek/deepseek-chat  # Or your preferred model
     ENABLE_LANGSMITH_TRACING=false        # Set to true for debugging
+
+    # Remote embedding API (OpenAI-compatible)
+    EMBEDDING_API_BASE_URL=https://api.openai.com/v1
+    EMBEDDING_API_KEY=sk-your-embedding-key
+    EMBEDDING_MODEL_NAME=text-embedding-3-small
     ```
+    `EMBEDDING_API_BASE_URL` should point to your embedding provider's OpenAI-compatible API root.
+    `EMBEDDING_API_KEY` is the key issued by that provider.
+    `EMBEDDING_MODEL_NAME` should be the provider's embedding model identifier.
+    If you use a different compatible gateway, replace those three values with the ones from your service.
 
 2.  **Run the Agent:**
     ```bash
