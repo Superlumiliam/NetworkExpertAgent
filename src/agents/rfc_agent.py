@@ -1,387 +1,192 @@
-from __future__ import annotations
-
+from typing import TypedDict, Literal
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+from langgraph.graph import StateGraph, END
 import json
-import re
-from pathlib import Path
-from typing import Any
+
+from src.core.state import AgentState
+import src.config.settings as cfg
+from src.tools.rfc_tools import add_rfc, search_rfc_knowledge, check_rfc_status
+
+# Initialize LLM
+llm = ChatOpenAI(
+    base_url=cfg.OPENROUTER_BASE_URL,
+    api_key=cfg.OPENROUTER_API_KEY,
+    model=cfg.DEFAULT_MODEL,
+    temperature=0
+)
+
+# Load skills
+try:
+    with open("src/skills/skill.md", "r") as f:
+        skills_doc = f.read()
+except FileNotFoundError:
+    skills_doc = "No skills loaded."
+
+# Nodes
+def analyze(state: AgentState):
+    """Analyze the user's request and decide the next step."""
+    messages = state['messages']
+    last_message = messages[-1].content
+    
+    system = f"""You are an expert network engineer. Analyze the user's question.
+    
+    Available Skills:
+    {skills_doc}
+    
+    Your task:
+    1. Identify if the user is asking about a specific RFC (e.g., "What is in RFC 7540?").
+    2. Extract the RFC number if present.
+    3. If the user is asking about a specific protocol or technical detail but hasn't mentioned an RFC number, try to identify the most relevant standard RFC number for that topic (e.g., PIM -> 7761, OSPFv3 -> 5340, IGMPv3 -> 3376).
+    4. Formulate a search query for the knowledge base. The query MUST be in English to better match RFC content (e.g., "Join/Prune Interval default value").
+    
+    Return a JSON object with:
+    - "rfc_id": The RFC number (e.g., "7540") or null if not specific and cannot be inferred.
+    - "query": A search query for the knowledge base.
+    - "needs_rfc_content": boolean, true if we need to consult an RFC document.
+    """
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system),
+        ("human", "{question}")
+    ])
+    
+    chain = prompt | llm | JsonOutputParser()
+    
+    try:
+        result = chain.invoke({"question": last_message})
+        if result.get("rfc_id"):
+            print(f"DEBUG: Identified/Inferred RFC ID: {result.get('rfc_id')}")
+        
+        return {
+            "rfc_id": result.get("rfc_id"),
+            "query": result.get("query"),
+            "next_step": "check_local" if result.get("rfc_id") else "search"
+        }
+    except Exception as e:
+        print(f"Analysis error: {e}")
+        return {"next_step": "answer", "context": "Error analyzing request."}
+
+async def check_local(state: AgentState):
+    """Check if the RFC is already in the knowledge base."""
+    rfc_id = state.get("rfc_id")
+    if not rfc_id:
+        return {"next_step": "search"}
+        
+    exists = await check_rfc_status.ainvoke(rfc_id)
+    
+    if exists:
+        return {"next_step": "search"}
+    else:
+        return {"next_step": "download"}
+
+async def download(state: AgentState):
+    """Download the RFC."""
+    rfc_id = state.get("rfc_id")
+    if not rfc_id:
+        return {"next_step": "search"}
+        
+    try:
+        result = await add_rfc.ainvoke(rfc_id)
+        return {"context": result, "next_step": "search"}
+    except Exception as e:
+        return {"context": f"Failed to download RFC {rfc_id}: {e}", "next_step": "answer"}
+
+async def search(state: AgentState):
+    """Search the knowledge base."""
+    query = state.get("query")
+    if not query:
+        return {"next_step": "answer"}
+        
+    try:
+        result = await search_rfc_knowledge.ainvoke(query)
+        return {"context": result, "next_step": "answer"}
+    except Exception as e:
+        return {"context": f"Search failed: {e}", "next_step": "answer"}
 
 from langchain_core.messages import AIMessage
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 
-import src.config.settings as cfg
-from src.core.state import AgentState
-from src.tools.rfc_tools import add_rfc, check_rfc_status, search_rfc_knowledge
+def answer(state: AgentState):
+    """Generate the final answer."""
+    messages = state['messages']
+    question = messages[-1].content
+    context = state.get("context", "")
+    
+    system = """You are an expert network engineer. Answer the user's question based on the provided context.
+    If the context doesn't contain the answer, say so, but try to be helpful based on your general knowledge if appropriate, 
+    while clearly distinguishing between context-based facts and general knowledge.
+    """
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system),
+        ("human", "Context:\n{context}\n\nQuestion: {question}")
+    ])
+    
+    chain = prompt | llm | StrOutputParser()
+    
+    response = chain.invoke({"context": context, "question": question})
+    return {"messages": [AIMessage(content=response)]}
 
+# Graph Construction
+workflow = StateGraph(AgentState)
 
-class SkillLoader:
-    """Load skill documents lazily so each phase only sees the guidance it needs."""
+workflow.add_node("analyze", analyze)
+workflow.add_node("check_local", check_local)
+workflow.add_node("download", download)
+workflow.add_node("search", search)
+workflow.add_node("answer", answer)
 
-    def __init__(self, skill_root: Path):
-        self.skill_root = skill_root
-        self._cache: dict[str, str] = {}
-        self.load_history: list[str] = []
+workflow.set_entry_point("analyze")
 
-    def load(self, *stages: str) -> str:
-        docs: list[str] = []
-        for stage in stages:
-            if stage not in self._cache:
-                skill_path = self._resolve_skill_path(stage)
-                try:
-                    self._cache[stage] = skill_path.read_text(encoding="utf-8")
-                except FileNotFoundError:
-                    self._cache[stage] = f"# Missing skill\nSkill file `{skill_path.name}` was not found."
-                self.load_history.append(stage)
-            docs.append(self._cache[stage])
-        return "\n\n".join(docs)
+def route_after_analyze(state: AgentState):
+    return state["next_step"]
 
-    def _resolve_skill_path(self, stage: str) -> Path:
-        if stage == "skill":
-            return self.skill_root / "SKILL.md"
-        return self.skill_root / f"{stage}.md"
+def route_after_check_local(state: AgentState):
+    return state["next_step"]
 
+def route_after_download(state: AgentState):
+    return state["next_step"]
 
-class RFCExpertAgentRuntime:
-    """Skill-driven RFC agent with a stable `ainvoke` interface."""
+def route_after_search(state: AgentState):
+    return state["next_step"]
 
-    def __init__(self):
-        self.llm = ChatOpenAI(
-            base_url=cfg.OPENROUTER_BASE_URL,
-            api_key=cfg.OPENROUTER_API_KEY,
-            model=cfg.DEFAULT_MODEL,
-            temperature=0,
-        )
-        skill_root = Path(__file__).resolve().parent.parent / "skills" / "rfc_agent"
-        self.skill_loader = SkillLoader(skill_root)
+workflow.add_conditional_edges(
+    "analyze",
+    route_after_analyze,
+    {
+        "check_local": "check_local",
+        "search": "search",
+        "answer": "answer"
+    }
+)
 
-    async def ainvoke(self, initial_state: AgentState) -> dict[str, Any]:
-        messages = initial_state.get("messages", [])
-        if not messages:
-            return {"messages": [AIMessage(content="I need a question before I can look up RFC details.")]}
+workflow.add_conditional_edges(
+    "check_local",
+    route_after_check_local,
+    {
+        "search": "search",
+        "download": "download"
+    }
+)
 
-        question = messages[-1].content
-        intent = await self._run_intent(question)
-        plan = await self._run_planning(question, intent)
-        retrieval = await self._run_retrieval(plan)
-        answer = await self._run_answer(question, plan, retrieval)
+workflow.add_conditional_edges(
+    "download",
+    route_after_download,
+    {
+        "search": "search",
+        "answer": "answer"
+    }
+)
 
-        return {
-            "messages": [AIMessage(content=answer)],
-            "rfc_id": plan.get("rfc_id"),
-            "query": plan.get("query"),
-            "context": retrieval.get("context"),
-            "next_step": "answer",
-        }
+workflow.add_conditional_edges(
+    "search",
+    route_after_search,
+    {
+        "answer": "answer"
+    }
+)
 
-    async def _run_intent(self, question: str) -> dict[str, Any]:
-        skills_doc = self.skill_loader.load("skill", "base", "intent")
-        system = f"""You are the intent stage of an RFC expert agent.
+workflow.add_edge("answer", END)
 
-Use the loaded skills to classify the user request before any retrieval step.
-
-Loaded skills:
-{skills_doc}
-
-Return only one JSON object. Do not emit XML, markdown fences, tool calls, or extra commentary.
-
-Return JSON with:
-- "request_type": one of "specific_rfc", "protocol_topic", "technical_detail", "general_networking"
-- "mentions_rfc": boolean
-- "confidence": number between 0 and 1
-- "topic": short English topic summary
-- "user_goal": short explanation of what the user wants
-"""
-        prompt = ChatPromptTemplate.from_messages(
-            [("system", system), ("human", "{question}")]
-        )
-        return self._invoke_json_prompt(
-            prompt,
-            {"question": question},
-            fallback={
-                "request_type": "technical_detail",
-                "mentions_rfc": False,
-                "confidence": 0.3,
-                "topic": question[:80],
-                "user_goal": "Need RFC-related technical guidance.",
-            },
-        )
-
-    async def _run_planning(self, question: str, intent: dict[str, Any]) -> dict[str, Any]:
-        skills_doc = self.skill_loader.load("planning")
-        intent_json = json.dumps(intent, ensure_ascii=False, sort_keys=True)
-        system = f"""You are the planning stage of an RFC expert agent.
-
-Use the loaded skills to decide retrieval strategy and produce a single search query in English.
-
-Loaded skills:
-{skills_doc}
-
-Return only one JSON object. Do not emit XML, markdown fences, tool calls, or extra commentary.
-
-Return JSON with:
-- "rfc_id": RFC number as digits only, or null
-- "query": an English retrieval query tailored for RFC text search
-- "needs_rfc_content": boolean
-- "should_check_local": boolean
-- "answer_strategy": short phrase describing how the answer should be framed
-"""
-        prompt = ChatPromptTemplate.from_messages(
-            [("system", system), ("human", "Question: {question}\nIntent result JSON: {intent_json}")]
-        )
-        result = self._invoke_json_prompt(
-            prompt,
-            {"question": question, "intent_json": intent_json},
-            fallback={
-                "rfc_id": self._normalize_rfc_id(intent.get("rfc_id")),
-                "query": question,
-                "needs_rfc_content": bool(intent.get("mentions_rfc")),
-                "should_check_local": bool(intent.get("mentions_rfc")),
-                "answer_strategy": "Use RFC retrieval when available.",
-            },
-        )
-        result["rfc_id"] = self._normalize_rfc_id(result.get("rfc_id"))
-        return result
-
-    async def _run_retrieval(self, plan: dict[str, Any]) -> dict[str, Any]:
-        self.skill_loader.load("retrieval")
-
-        rfc_id = self._normalize_rfc_id(plan.get("rfc_id"))
-        query = plan.get("query")
-        needs_rfc_content = bool(plan.get("needs_rfc_content"))
-        should_check_local = bool(plan.get("should_check_local", bool(rfc_id and needs_rfc_content)))
-
-        context_parts: list[str] = []
-        retrieval_notes: list[str] = []
-
-        if rfc_id and needs_rfc_content and should_check_local:
-            exists = await check_rfc_status.ainvoke(rfc_id)
-            retrieval_notes.append(f"Local RFC {rfc_id} indexed: {exists}.")
-            if not exists:
-                try:
-                    download_result = await add_rfc.ainvoke(rfc_id)
-                except Exception as exc:
-                    download_result = f"Failed to download RFC {rfc_id}: {exc}"
-
-                retrieval_notes.append(download_result)
-                if self._is_tool_error(download_result):
-                    return {
-                        "context": "",
-                        "retrieval_notes": "\n".join(retrieval_notes),
-                        "download_failed": True,
-                        "search_failed": False,
-                        "search_empty": False,
-                    }
-
-        if query:
-            try:
-                search_result = await search_rfc_knowledge.ainvoke(query)
-            except Exception as exc:
-                search_result = f"Search failed: {exc}"
-
-            if self._is_search_error(search_result):
-                retrieval_notes.append(search_result)
-                return {
-                    "context": "",
-                    "retrieval_notes": "\n".join(retrieval_notes),
-                    "download_failed": False,
-                    "search_failed": True,
-                    "search_empty": False,
-                }
-
-            if self._is_empty_search(search_result):
-                retrieval_notes.append(search_result)
-                return {
-                    "context": "",
-                    "retrieval_notes": "\n".join(retrieval_notes),
-                    "download_failed": False,
-                    "search_failed": False,
-                    "search_empty": True,
-                }
-
-            context_parts.append(search_result)
-            retrieval_notes.append("Knowledge base search succeeded.")
-
-        return {
-            "context": "\n\n".join(context_parts),
-            "retrieval_notes": "\n".join(retrieval_notes),
-            "download_failed": False,
-            "search_failed": False,
-            "search_empty": not bool(context_parts),
-        }
-
-    async def _run_answer(
-        self, question: str, plan: dict[str, Any], retrieval: dict[str, Any]
-    ) -> str:
-        skills_doc = self.skill_loader.load("answering")
-        plan_json = json.dumps(plan, ensure_ascii=False, sort_keys=True)
-        system = f"""You are the answering stage of an RFC expert agent.
-
-Use the loaded skills to answer conservatively and clearly.
-
-Loaded skills:
-{skills_doc}
-
-Rules:
-- Prefer RFC-backed statements from the provided context.
-- If retrieval failed or context is empty, explicitly say what is missing.
-- You may add brief general networking knowledge, but label it as general knowledge rather than RFC-backed evidence.
-- If the user asked about a specific RFC and it could not be retrieved, say that directly.
-"""
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system),
-                (
-                    "human",
-                    "Question: {question}\n\nPlan JSON: {plan_json}\n\nRetrieval notes:\n{retrieval_notes}\n\nContext:\n{context}",
-                ),
-            ]
-        )
-        chain = prompt | self.llm | StrOutputParser()
-        return chain.invoke(
-            {
-                "question": question,
-                "plan_json": plan_json,
-                "retrieval_notes": retrieval.get("retrieval_notes", ""),
-                "context": retrieval.get("context", ""),
-            }
-        )
-
-    @staticmethod
-    def _normalize_rfc_id(value: Any) -> str | None:
-        if value is None:
-            return None
-        text = str(value).strip().lower().replace("rfc", "")
-        digits = "".join(ch for ch in text if ch.isdigit())
-        return digits or None
-
-    @staticmethod
-    def _is_tool_error(result: Any) -> bool:
-        if not isinstance(result, str):
-            return False
-        lowered = result.lower()
-        return lowered.startswith("error ") or lowered.startswith("error:") or "failed to download rfc" in lowered
-
-    @staticmethod
-    def _is_search_error(result: Any) -> bool:
-        if not isinstance(result, str):
-            return False
-        lowered = result.lower()
-        return lowered.startswith("search failed:") or lowered.startswith("error querying knowledge base:")
-
-    @staticmethod
-    def _is_empty_search(result: Any) -> bool:
-        if not isinstance(result, str):
-            return False
-        return result.strip() == "No relevant information found in the knowledge base."
-
-    def _invoke_json_prompt(
-        self,
-        prompt: ChatPromptTemplate,
-        variables: dict[str, Any],
-        fallback: dict[str, Any],
-    ) -> dict[str, Any]:
-        chain = prompt | self.llm | StrOutputParser()
-        raw_output = chain.invoke(variables)
-        return self._parse_structured_output(raw_output, fallback)
-
-    def _parse_structured_output(self, raw_output: str, fallback: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(raw_output, str):
-            if isinstance(raw_output, dict):
-                return {**fallback, **raw_output}
-            raise ValueError(f"Unexpected structured output type: {type(raw_output).__name__}")
-
-        cleaned = raw_output.strip()
-        for candidate in (cleaned, self._extract_json_block(cleaned)):
-            if candidate:
-                try:
-                    parsed = json.loads(candidate)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(parsed, dict):
-                    return {**fallback, **parsed}
-
-        tool_call_result = self._parse_tool_call_output(cleaned)
-        if tool_call_result is not None:
-            return {**fallback, **tool_call_result}
-
-        key_value_result = self._parse_key_value_output(cleaned)
-        if key_value_result is not None:
-            return {**fallback, **key_value_result}
-
-        raise ValueError(f"Failed to parse structured output: {raw_output}")
-
-    @staticmethod
-    def _extract_json_block(text: str) -> str | None:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            return match.group(0)
-        fenced_match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
-        if fenced_match:
-            return fenced_match.group(1)
-        return None
-
-    @classmethod
-    def _parse_tool_call_output(cls, text: str) -> dict[str, Any] | None:
-        invoke_match = re.search(r'<invoke name="([^"]+)">(.+?)</invoke>', text, re.DOTALL)
-        if not invoke_match:
-            return None
-
-        tool_name = invoke_match.group(1)
-        body = invoke_match.group(2)
-        parameters = {
-            name: value.strip()
-            for name, value in re.findall(
-                r'<parameter name="([^"]+)">(.*?)</parameter>', body, re.DOTALL
-            )
-        }
-
-        if tool_name == "search_rfc_knowledge":
-            return {
-                "query": parameters.get("query"),
-                "rfc_id": cls._normalize_rfc_id(parameters.get("rfc_id")),
-                "needs_rfc_content": bool(parameters.get("rfc_id")),
-                "should_check_local": bool(parameters.get("rfc_id")),
-                "answer_strategy": "Answer from RFC search results.",
-            }
-
-        if tool_name == "check_rfc_status":
-            rfc_id = cls._normalize_rfc_id(parameters.get("rfc_id"))
-            return {
-                "rfc_id": rfc_id,
-                "needs_rfc_content": bool(rfc_id),
-                "should_check_local": bool(rfc_id),
-            }
-
-        if tool_name == "add_rfc":
-            rfc_id = cls._normalize_rfc_id(parameters.get("rfc_id"))
-            return {
-                "rfc_id": rfc_id,
-                "needs_rfc_content": True,
-                "should_check_local": bool(rfc_id),
-            }
-
-        return None
-
-    @staticmethod
-    def _parse_key_value_output(text: str) -> dict[str, Any] | None:
-        pairs = re.findall(r"^\s*([a-zA-Z_]+)\s*:\s*(.+?)\s*$", text, re.MULTILINE)
-        if not pairs:
-            return None
-
-        parsed: dict[str, Any] = {}
-        for key, value in pairs:
-            normalized = value.strip().strip('"')
-            lowered = normalized.lower()
-            if lowered in {"true", "false"}:
-                parsed[key] = lowered == "true"
-            elif re.fullmatch(r"\d+(\.\d+)?", normalized):
-                parsed[key] = float(normalized) if "." in normalized else int(normalized)
-            elif lowered == "null":
-                parsed[key] = None
-            else:
-                parsed[key] = normalized
-        return parsed
-
-
-rfc_agent = RFCExpertAgentRuntime()
+rfc_agent = workflow.compile()

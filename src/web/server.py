@@ -1,9 +1,8 @@
 import asyncio
 import json
 import os
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from src.main import process_question
 
@@ -667,63 +666,113 @@ window.addEventListener('load', async () => {
 """
 
 
-app = FastAPI()
+def _json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+def _text_response(
+    handler: BaseHTTPRequestHandler,
+    status: int,
+    content: str,
+    content_type: str,
+) -> None:
+    body = content.encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
-    return HTMLResponse(content=HTML_PAGE)
+class NetworkExpertHandler(BaseHTTPRequestHandler):
+    server_version = "NetworkExpertHTTP/0.1"
 
+    def do_GET(self) -> None:
+        if self.path == "/":
+            _text_response(self, HTTPStatus.OK, HTML_PAGE, "text/html; charset=utf-8")
+            return
 
-@app.get("/app.css")
-async def app_css() -> Response:
-    return Response(content=CSS_STYLES, media_type="text/css")
+        if self.path == "/app.css":
+            _text_response(self, HTTPStatus.OK, CSS_STYLES, "text/css; charset=utf-8")
+            return
 
+        if self.path == "/app.js":
+            _text_response(
+                self,
+                HTTPStatus.OK,
+                JS_APP,
+                "application/javascript; charset=utf-8",
+            )
+            return
 
-@app.get("/app.js")
-async def app_js() -> Response:
-    return Response(content=JS_APP, media_type="application/javascript")
+        if self.path == "/health":
+            _json_response(self, HTTPStatus.OK, {"status": "ok"})
+            return
 
+        _json_response(self, HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
-@app.get("/health")
-async def health() -> JSONResponse:
-    return JSONResponse(content={"status": "ok"})
+    def do_POST(self) -> None:
+        if self.path != "/api/chat":
+            _json_response(self, HTTPStatus.NOT_FOUND, {"error": "Not found"})
+            return
 
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            _json_response(
+                self,
+                HTTPStatus.BAD_REQUEST,
+                {"error": "Invalid Content-Length header"},
+            )
+            return
 
-@app.post("/api/chat")
-async def chat(request: Request) -> JSONResponse:
-    try:
-        payload = await request.json()
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+        raw_body = self.rfile.read(content_length)
 
-    message = str(payload.get("message", "")).strip()
-    if not message:
-        raise HTTPException(status_code=400, detail="Message is required")
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except json.JSONDecodeError:
+            _json_response(self, HTTPStatus.BAD_REQUEST, {"error": "Invalid JSON body"})
+            return
 
-    try:
-        answer = await process_question(message)
-    except Exception as exc:
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Failed to process request: {exc}"},
-        )
+        message = str(payload.get("message", "")).strip()
+        if not message:
+            _json_response(self, HTTPStatus.BAD_REQUEST, {"error": "Message is required"})
+            return
 
-    return JSONResponse(content={"answer": answer})
+        try:
+            answer = asyncio.run(process_question(message))
+        except Exception as exc:
+            _json_response(
+                self,
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": f"Failed to process request: {exc}"},
+            )
+            return
+
+        _json_response(self, HTTPStatus.OK, {"answer": answer})
+
+    def log_message(self, format: str, *args) -> None:
+        return
 
 
 def main() -> None:
-    import uvicorn
-
     host = os.getenv("NETWORK_EXPERT_WEB_HOST", "127.0.0.1")
     port = int(os.getenv("NETWORK_EXPERT_WEB_PORT", "8000"))
+
+    server = ThreadingHTTPServer((host, port), NetworkExpertHandler)
     print(f"Network Expert Web UI available at http://{host}:{port}")
-    uvicorn.run(app, host=host, port=port)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\\nShutting down web server...")
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":
