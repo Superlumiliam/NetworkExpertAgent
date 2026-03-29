@@ -12,7 +12,6 @@ data
 
 #工具缓存
 __pycache__
-config/__pycache__
 
 .DS_Store
 .codex

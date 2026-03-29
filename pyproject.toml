@@ -5,12 +5,9 @@ description = "Network Expert Agent with RAG and LangGraph"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp",
     "httpx",
     "chromadb",
-    "langchain",
     "langchain-openai",
-    "langchain-community",
     "langchain-text-splitters",
     "python-dotenv",
     "langgraph",
