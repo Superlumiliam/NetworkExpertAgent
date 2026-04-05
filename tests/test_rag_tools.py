@@ -128,7 +128,7 @@ class TestRagTools(unittest.TestCase):
         mock_embeddings.embed_query.return_value = [0.1, 0.2, 0.3]
         mock_get_embeddings.return_value = mock_embeddings
 
-        results = rag_tools.query_knowledge_base("http2", n_results=3)
+        results = rag_tools.query_knowledge_base("igmp query interval", n_results=3, rfc_ids=["3376"])
 
         self.assertEqual(len(results), 1)
         self.assertIsInstance(results[0], Document)
@@ -136,6 +136,38 @@ class TestRagTools(unittest.TestCase):
         self.assertIn("FROM public.match_rfc_documents", cursor.executed[0][0])
         self.assertIn("::extensions.vector", cursor.executed[0][0])
         self.assertIn("::integer", cursor.executed[0][0])
+        self.assertIn("::text[]", cursor.executed[0][0])
+        self.assertEqual(
+            cursor.executed[0][1],
+            ([0.1, 0.2, 0.3], 3, ["3376"]),
+        )
+
+    @patch("src.tools.rag_tools._get_db_connection")
+    def test_find_missing_rfcs_returns_only_absent_ids(self, mock_get_connection):
+        cursor = FakeCursor(
+            fetchall_result=[
+                {"rfc_id": "3376"},
+                {"rfc_id": "7761"},
+            ]
+        )
+        mock_get_connection.return_value = FakeConnection(cursor)
+
+        missing = rag_tools.find_missing_rfcs(["3376", "3810", "7761"])
+
+        self.assertEqual(missing, ["3810"])
+        self.assertIn("SELECT DISTINCT rfc_id", cursor.executed[0][0])
+
+    @patch("src.tools.rag_tools._get_db_connection")
+    def test_clear_knowledge_base_truncates_table(self, mock_get_connection):
+        cursor = FakeCursor()
+        mock_get_connection.return_value = FakeConnection(cursor)
+
+        rag_tools.clear_knowledge_base()
+
+        self.assertEqual(
+            cursor.executed[0],
+            ("TRUNCATE TABLE public.rfc_knowledge_base", None),
+        )
 
     @patch("src.tools.rag_tools._get_db_connection")
     def test_check_rfc_exists_false_when_empty(self, mock_get_connection):

@@ -23,7 +23,8 @@ alter table public.rfc_knowledge_base enable row level security;
 
 create or replace function public.match_rfc_documents(
   query_embedding extensions.vector,
-  match_count int default 5
+  match_count int default 5,
+  filter_rfc_ids text[] default null
 )
 returns table (
   id uuid,
@@ -40,6 +41,8 @@ as $$
     metadata,
     1 - (embedding <=> query_embedding) as similarity
   from public.rfc_knowledge_base
+  where filter_rfc_ids is null
+     or rfc_id = any(filter_rfc_ids)
   order by embedding <=> query_embedding
   limit least(match_count, 50);
 $$;

@@ -1,54 +1,80 @@
-import unittest
-from unittest.mock import patch, AsyncMock
-import sys
 import os
+import sys
+import unittest
+from unittest.mock import AsyncMock, patch
 
-# Set dummy env vars BEFORE importing anything from src
+from langchain_core.messages import HumanMessage
+
+# Set dummy env vars BEFORE importing anything from src.
 os.environ["OPENROUTER_API_KEY"] = "dummy_key"
 os.environ["DEFAULT_MODEL"] = "dummy_model"
 os.environ["ENABLE_LANGSMITH_TRACING"] = "false"
 
-# Add project root to path
+# Add project root to path.
 sys.path.append(os.getcwd())
 
-from src.agents.rfc_agent import check_local, search, download
+from src.agents.rfc_agent import analyze, check_availability, search
+
 
 class TestRFCAgent(unittest.IsolatedAsyncioTestCase):
-    
-    async def test_check_local(self):
-        # Patch the entire tool object in the module where it is used
-        with patch("src.agents.rfc_agent.check_rfc_status") as mock_tool:
-            # Mock the invoke method of the tool
-            mock_tool.ainvoke = AsyncMock()
-            
-            mock_tool.ainvoke.return_value = True
-            state = {"rfc_id": "7540"}
-            result = await check_local(state)
-            self.assertEqual(result["next_step"], "search")
-            
-            mock_tool.ainvoke.return_value = False
-            result = await check_local(state)
-            self.assertEqual(result["next_step"], "download")
+    @patch("src.agents.rfc_agent._build_search_query", return_value="IGMPv3 query interval")
+    def test_analyze_supported_protocol_routes_to_availability_check(self, mock_query_builder):
+        state = {"messages": [HumanMessage(content="IGMPv3 的默认查询间隔是多少？")]}
 
-    async def test_search(self):
-        with patch("src.agents.rfc_agent.search_rfc_knowledge") as mock_tool:
-            mock_tool.ainvoke = AsyncMock()
-            mock_tool.ainvoke.return_value = "RFC Content"
-            
-            state = {"query": "http2"}
+        result = analyze(state)
+
+        self.assertEqual(result["target_rfc_ids"], ["3376"])
+        self.assertEqual(result["query"], "IGMPv3 query interval")
+        self.assertEqual(result["next_step"], "check_availability")
+        mock_query_builder.assert_called_once()
+
+    @patch("src.agents.rfc_agent._build_search_query")
+    def test_analyze_old_version_returns_not_ingested(self, mock_query_builder):
+        state = {"messages": [HumanMessage(content="IGMPv2 支持吗？")]}
+
+        result = analyze(state)
+
+        self.assertEqual(result["availability_status"], "not_ingested")
+        self.assertEqual(result["next_step"], "answer_not_ingested")
+        mock_query_builder.assert_not_called()
+
+    @patch("src.agents.rfc_agent._build_search_query")
+    def test_analyze_unsupported_rfc_returns_not_ingested(self, mock_query_builder):
+        state = {"messages": [HumanMessage(content="RFC 8200 defines which IPv6 header fields?")]}
+
+        result = analyze(state)
+
+        self.assertEqual(result["availability_status"], "not_ingested")
+        self.assertEqual(result["next_step"], "answer_not_ingested")
+        mock_query_builder.assert_not_called()
+
+    async def test_check_availability_routes_to_search_when_preloaded(self):
+        with patch("src.agents.rfc_agent.get_missing_rfc_ids", AsyncMock(return_value=[])):
+            result = await check_availability({"target_rfc_ids": ["3376"]})
+
+        self.assertEqual(result["availability_status"], "ready")
+        self.assertEqual(result["next_step"], "search")
+
+    async def test_check_availability_returns_not_ingested_when_missing(self):
+        with patch(
+            "src.agents.rfc_agent.get_missing_rfc_ids",
+            AsyncMock(return_value=["3810"]),
+        ):
+            result = await check_availability({"target_rfc_ids": ["3810"]})
+
+        self.assertEqual(result["availability_status"], "not_ingested")
+        self.assertEqual(result["next_step"], "answer_not_ingested")
+        self.assertIn("暂未入库", result["availability_message"])
+
+    async def test_search_limits_query_to_target_rfc_ids(self):
+        with patch("src.agents.rfc_agent.search_rfc_knowledge", AsyncMock(return_value="RFC Content")) as mock_search:
+            state = {"query": "IGMPv3 query interval", "target_rfc_ids": ["3376"]}
             result = await search(state)
-            self.assertEqual(result["context"], "RFC Content")
-            self.assertEqual(result["next_step"], "answer")
-            
-    async def test_download(self):
-        with patch("src.agents.rfc_agent.add_rfc") as mock_tool:
-            mock_tool.ainvoke = AsyncMock()
-            mock_tool.ainvoke.return_value = "Success"
-            
-            state = {"rfc_id": "7540"}
-            result = await download(state)
-            self.assertEqual(result["context"], "Success")
-            self.assertEqual(result["next_step"], "search")
+
+        self.assertEqual(result["context"], "RFC Content")
+        self.assertEqual(result["next_step"], "answer")
+        mock_search.assert_awaited_once_with("IGMPv3 query interval", ["3376"])
+
 
 if __name__ == "__main__":
     unittest.main()

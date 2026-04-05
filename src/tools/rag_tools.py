@@ -248,7 +248,47 @@ def add_documents(documents: List[Document]) -> None:
                 records,
             )
 
-def query_knowledge_base(query: str, n_results: int = 5) -> List[Document]:
+def clear_knowledge_base() -> None:
+    """Remove all indexed RFC content from Supabase."""
+    table_name = _validate_identifier(cfg.SUPABASE_VECTOR_TABLE, "SUPABASE_VECTOR_TABLE")
+
+    with _get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"TRUNCATE TABLE public.{table_name}")
+
+
+def find_missing_rfcs(rfc_ids: List[str]) -> List[str]:
+    """Return the RFC ids that are not present in Supabase."""
+    if not rfc_ids:
+        return []
+
+    normalized_rfc_ids = sorted({str(rfc_id).strip() for rfc_id in rfc_ids})
+    table_name = _validate_identifier(cfg.SUPABASE_VECTOR_TABLE, "SUPABASE_VECTOR_TABLE")
+
+    with _get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT DISTINCT rfc_id
+                FROM public.{table_name}
+                WHERE rfc_id = ANY(%s)
+                """,
+                (normalized_rfc_ids,),
+            )
+            existing = {
+                row["rfc_id"]
+                for row in cur.fetchall()
+                if row.get("rfc_id")
+            }
+
+    return [rfc_id for rfc_id in normalized_rfc_ids if rfc_id not in existing]
+
+
+def query_knowledge_base(
+    query: str,
+    n_results: int = 5,
+    rfc_ids: Optional[List[str]] = None,
+) -> List[Document]:
     """Query the Supabase vector database for relevant documents."""
     function_name = _validate_identifier(
         cfg.SUPABASE_VECTOR_MATCH_FUNCTION,
@@ -256,15 +296,16 @@ def query_knowledge_base(query: str, n_results: int = 5) -> List[Document]:
     )
     query_embedding = get_embeddings().embed_query(query)
     _assert_vector_dimension(query_embedding)
+    filter_rfc_ids = sorted({str(rfc_id).strip() for rfc_id in rfc_ids}) if rfc_ids else None
 
     with _get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 f"""
                 SELECT id, content, metadata, similarity
-                FROM public.{function_name}(%s::extensions.vector, %s::integer)
+                FROM public.{function_name}(%s::extensions.vector, %s::integer, %s::text[])
                 """,
-                (_vector_value(query_embedding), n_results),
+                (_vector_value(query_embedding), n_results, filter_rfc_ids),
             )
             rows = cur.fetchall()
 

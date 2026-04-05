@@ -1,11 +1,13 @@
-from typing import TypedDict, Annotated, List, Optional
+from typing import TypedDict, Annotated, List
 from langchain_core.messages import BaseMessage
 import operator
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     """The state of the agent."""
     messages: Annotated[List[BaseMessage], operator.add]
-    rfc_id: Optional[str]
-    query: Optional[str]
-    context: Optional[str]
-    next_step: Optional[str]
+    query: str
+    context: str
+    target_rfc_ids: List[str]
+    availability_status: str
+    availability_message: str
+    next_step: str

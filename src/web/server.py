@@ -73,18 +73,26 @@ HTML_PAGE = """<!DOCTYPE html>
           <h2>可以做什么</h2>
           <ul class="feature-list">
             <li>自动判断问题更适合 RFC 专家还是通用对话助手。</li>
-            <li>需要时会查询本地知识库，并补充下载对应 RFC 文档。</li>
-            <li>根据RFC文档准确回答网络相关问题，避免幻觉。</li>
+            <li>基于已预热的 RFC 知识库回答 IGMP、MLD、PIM 相关问题。</li>
+            <li>未预热的协议会直接提示暂未入库，避免长时间等待。</li>
           </ul>
+          <p class="protocol-caption">当前支持协议</p>
+          <div class="protocol-tags" aria-label="当前支持协议">
+            <span class="protocol-tag">IGMP</span>
+            <span class="protocol-tag">MLD</span>
+            <span class="protocol-tag">PIM</span>
+          </div>
+          <p class="support-note">当前回答基于已预热的最新版协议，旧版本或其他协议会直接提示未入库。</p>
         </section>
 
         <section class="info-block prompts">
           <p class="section-kicker">Prompt Ideas</p>
           <h2>可以这样开始</h2>
           <div class="prompt-list">
-            <button type="button" class="prompt-chip">Explain the TCP three-way handshake.</button>
-            <button type="button" class="prompt-chip">RFC 8200 defines which IPv6 header fields?</button>
-            <button type="button" class="prompt-chip">IGMPv3 的默认查询间隔是多少？</button>
+            <button type="button" class="prompt-chip">IGMPv3 的默认 Query Interval 是多少？</button>
+            <button type="button" class="prompt-chip">MLDv2 是由哪个 RFC 定义的？</button>
+            <button type="button" class="prompt-chip">PIM-SM 是由哪个 RFC 定义的？</button>
+            <button type="button" class="prompt-chip">IGMPv2 支持吗？</button>
           </div>
         </section>
       </aside>
@@ -422,6 +430,31 @@ button {
   margin: 18px 0 0;
   padding-left: 18px;
   line-height: 1.85;
+}
+
+.protocol-caption,
+.support-note {
+  margin: 18px 0 0;
+  color: var(--muted);
+}
+
+.protocol-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.protocol-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 14px;
+  border: 1px solid rgba(115, 155, 120, 0.22);
+  border-radius: 999px;
+  background: rgba(115, 155, 120, 0.12);
+  color: var(--text);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
 }
 
 .prompts {

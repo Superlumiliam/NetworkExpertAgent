@@ -1,111 +1,103 @@
-import httpx
-import sys
 import asyncio
-from typing import List, Optional
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+import sys
+from typing import Any, Sequence
+
+import httpx
 from langchain_core.documents import Document
-from langchain_core.tools import tool
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import src.config.settings as cfg
-from src.tools.rag_tools import add_documents, query_knowledge_base, check_rfc_exists
+from src.core.rfc_catalog import normalize_rfc_id
+from src.tools.rag_tools import (
+    add_documents,
+    clear_knowledge_base,
+    find_missing_rfcs,
+    query_knowledge_base,
+)
+
 
 async def download_rfc_text(rfc_id: str) -> str:
     """Download RFC text from the official editor asynchronously."""
-    # Ensure rfc_id is just the number
-    rfc_id = str(rfc_id).lower().replace("rfc", "").strip()
-    url = cfg.RFC_BASE_URL.format(rfc_id=rfc_id)
-    
-    print(f"Downloading RFC {rfc_id} from {url}...", file=sys.stderr)
+    normalized_rfc_id = normalize_rfc_id(rfc_id)
+    url = cfg.RFC_BASE_URL.format(rfc_id=normalized_rfc_id)
+
+    print(f"Downloading RFC {normalized_rfc_id} from {url}...", file=sys.stderr)
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
-        
-    if response.status_code == 200:
-        return response.text
-    else:
-        raise Exception(f"Failed to download RFC {rfc_id}. Status code: {response.status_code}")
 
-def chunk_text(text: str, rfc_id: str) -> List[Document]:
-    """Split text into chunks for RAG."""
-    # RFCs have specific structure (headers, footers, page breaks).
-    # A simple recursive splitter is a good start.
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Failed to download RFC {normalized_rfc_id}. Status code: {response.status_code}"
+        )
+
+    return response.text
+
+
+def chunk_rfc_text(text: str, rfc_id: str) -> list[Document]:
+    """Split RFC text into chunks for RAG indexing."""
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len,
-        separators=["\n\n", "\n", " ", ""]
+        separators=["\n\n", "\n", " ", ""],
     )
-    
-    docs = text_splitter.create_documents([text])
-    # Add metadata
-    for doc in docs:
-        doc.metadata = {"source": f"RFC {rfc_id}", "rfc_id": rfc_id}
-        
-    return docs
 
-@tool
-async def add_rfc(rfc_id: str) -> str:
-    """
-    Download and index an RFC document into the vector database.
-    
-    Args:
-        rfc_id: The RFC number (e.g., "7540" or "rfc7540").
-    """
-    try:
-        rfc_id = str(rfc_id).lower().replace("rfc", "").strip()
-        text = await download_rfc_text(rfc_id)
-        
-        # CPU-bound tasks in thread pool
-        chunks = await asyncio.to_thread(chunk_text, text, rfc_id)
-        
-        # IO-bound (disk) task in thread pool
-        await asyncio.to_thread(add_documents, chunks)
-        
-        return f"Successfully added RFC {rfc_id} to knowledge base. ({len(chunks)} chunks)"
-    except Exception as e:
-        return f"Error adding RFC {rfc_id}: {str(e)}"
+    documents = text_splitter.create_documents([text])
+    normalized_rfc_id = normalize_rfc_id(rfc_id)
+    for document in documents:
+        document.metadata = {
+            "source": f"RFC {normalized_rfc_id}",
+            "rfc_id": normalized_rfc_id,
+        }
+    return documents
 
-@tool
-async def check_rfc_status(rfc_id: str) -> bool:
-    """
-    Check if an RFC is already indexed in the knowledge base.
-    
-    Args:
-        rfc_id: The RFC number (e.g., "7540" or "rfc7540").
-    """
-    try:
-        # Ensure rfc_id is just the number
-        rfc_id = str(rfc_id).lower().replace("rfc", "").strip()
-        
-        def check():
-            return check_rfc_exists(rfc_id)
-            
-        exists = await asyncio.to_thread(check)
-        return exists
-    except Exception:
-        return False
 
-@tool
-async def search_rfc_knowledge(query: str) -> str:
-    """
-    Search the indexed RFC knowledge base for relevant sections.
-    
-    Args:
-        query: The search query or question about a protocol.
-    """
-    try:
-        def search():
-            results = query_knowledge_base(query, n_results=5)
-            return results
-            
-        results = await asyncio.to_thread(search)
-        
-        if not results:
-            return "No relevant information found in the knowledge base."
-            
-        context_list = []
-        for doc in results:
-            context_list.append(f"[Source: {doc.metadata.get('source', 'Unknown')}]\n{doc.page_content}")
-            
-        return "\n\n---\n\n".join(context_list)
-    except Exception as e:
-        return f"Error querying knowledge base: {str(e)}"
+async def ingest_rfc_document(rfc_id: str) -> dict[str, Any]:
+    """Download, chunk, and persist one RFC document."""
+    normalized_rfc_id = normalize_rfc_id(rfc_id)
+    text = await download_rfc_text(normalized_rfc_id)
+    chunks = await asyncio.to_thread(chunk_rfc_text, text, normalized_rfc_id)
+    await asyncio.to_thread(add_documents, chunks)
+    return {"rfc_id": normalized_rfc_id, "chunks": len(chunks)}
+
+
+async def preload_rfc_documents(rfc_ids: Sequence[str]) -> list[dict[str, Any]]:
+    """Preload a fixed list of RFCs into the knowledge base."""
+    results = []
+    for rfc_id in rfc_ids:
+        result = await ingest_rfc_document(rfc_id)
+        results.append(result)
+    return results
+
+
+async def clear_rfc_knowledge_base() -> None:
+    """Remove all RFC content from the knowledge base."""
+    await asyncio.to_thread(clear_knowledge_base)
+
+
+async def get_missing_rfc_ids(rfc_ids: Sequence[str]) -> list[str]:
+    """Return RFC ids that are not currently indexed."""
+    normalized_rfc_ids = [normalize_rfc_id(rfc_id) for rfc_id in rfc_ids]
+    return await asyncio.to_thread(find_missing_rfcs, normalized_rfc_ids)
+
+
+async def search_rfc_knowledge(query: str, rfc_ids: Sequence[str] | None = None) -> str:
+    """Search the indexed RFC knowledge base for relevant sections."""
+    normalized_rfc_ids = [normalize_rfc_id(rfc_id) for rfc_id in rfc_ids] if rfc_ids else None
+    results = await asyncio.to_thread(
+        query_knowledge_base,
+        query,
+        5,
+        normalized_rfc_ids,
+    )
+
+    if not results:
+        return "No relevant information found in the knowledge base."
+
+    context_list = []
+    for document in results:
+        context_list.append(
+            f"[Source: {document.metadata.get('source', 'Unknown')}]\n{document.page_content}"
+        )
+
+    return "\n\n---\n\n".join(context_list)
