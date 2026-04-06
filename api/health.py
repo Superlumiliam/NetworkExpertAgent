@@ -1,14 +1,25 @@
 from http.server import BaseHTTPRequestHandler
 
-from src.web.app import build_health_response, build_method_not_allowed_response
+from src.web.app import (
+    build_invalid_content_length_response,
+    dispatch_local_request,
+)
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        self._send_response(build_health_response())
+        self._send_response(dispatch_local_request("GET", self.path))
 
     def do_POST(self) -> None:
-        self._send_response(build_method_not_allowed_response("GET"))
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send_response(build_invalid_content_length_response())
+            return
+
+        self._send_response(
+            dispatch_local_request("POST", self.path, self.rfile.read(content_length))
+        )
 
     def log_message(self, format: str, *args) -> None:
         return

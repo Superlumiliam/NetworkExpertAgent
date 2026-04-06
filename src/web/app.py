@@ -251,24 +251,29 @@ def build_chat_response(raw_body: bytes) -> RouteResponse:
 
 def dispatch_local_request(method: str, raw_path: str, body: bytes = b"") -> RouteResponse:
     path = urlparse(raw_path).path
+    index_paths = {"/", "/api/index"}
+    health_paths = {"/health", "/api/health"}
+    chat_paths = {"/api/chat"}
 
     if method == "GET":
-        if path == "/":
+        if path in index_paths:
             return build_index_response()
         if path == "/app.css":
             return _read_public_asset("app.css", "text/css; charset=utf-8")
         if path == "/app.js":
             return _read_public_asset("app.js", "application/javascript; charset=utf-8")
-        if path == "/health":
+        if path in health_paths:
             return build_health_response()
-        if path == "/api/chat":
+        if path in chat_paths:
             return build_method_not_allowed_response("POST")
         return build_not_found_response()
 
     if method == "POST":
-        if path == "/api/chat":
+        # Vercel may route POST requests to the same Python entrypoint that serves "/".
+        # Treat root/index POSTs as chat requests so the deployment keeps working.
+        if path in chat_paths or path in index_paths:
             return build_chat_response(body)
-        if path in {"/", "/app.css", "/app.js", "/health"}:
+        if path in {"/app.css", "/app.js"} | health_paths:
             return build_method_not_allowed_response("GET")
         return build_not_found_response()
 
