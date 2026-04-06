@@ -166,8 +166,6 @@ NetworkExpertAgent/
 │   │   └── rfc_tools.py        # RFC 下载、切分、预加载与查询拼装
 │   ├── web/
 │   │   └── server.py           # 轻量 Web 服务与前端页面
-│   └── skills/
-│       └── skill.md
 ├── scripts/
 │   ├── clear_rfc_db.py         # 清空 RFC 向量库
 │   └── preload_rfcs.py         # 预加载支持范围内的 RFC
