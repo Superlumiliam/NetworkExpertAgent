@@ -1,0 +1,7 @@
+tests
+scripts
+README.md
+LICENSE
+__pycache__
+*.pyc
+.pytest_cache

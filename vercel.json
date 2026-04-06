@@ -9,10 +9,5 @@
       "source": "/health",
       "destination": "/api/health"
     }
-  ],
-  "functions": {
-    "api/**/*.py": {
-      "excludeFiles": "{tests/**,scripts/**,README.md,LICENSE,public/**}"
-    }
-  }
+  ]
 }
