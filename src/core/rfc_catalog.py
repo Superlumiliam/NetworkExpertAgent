@@ -15,17 +15,22 @@ _RFC_TO_PROTOCOL = {
     "7761": "PIM",
 }
 
+def _compile_protocol_pattern(pattern: str) -> re.Pattern[str]:
+    """Match protocol tokens even when they are adjacent to CJK text like `PIM协议`."""
+    return re.compile(rf"(?<![A-Za-z0-9])(?:{pattern})(?![A-Za-z0-9])", re.IGNORECASE)
+
+
 _SUPPORTED_PROTOCOL_PATTERNS = (
-    (re.compile(r"\bpim(?:[\s-]*sm)?\b", re.IGNORECASE), ["7761"]),
-    (re.compile(r"\bmldv?2\b", re.IGNORECASE), ["3810"]),
-    (re.compile(r"\bmld\b", re.IGNORECASE), ["3810"]),
-    (re.compile(r"\bigmpv?3\b", re.IGNORECASE), ["3376"]),
-    (re.compile(r"\bigmp\b", re.IGNORECASE), ["3376"]),
+    (_compile_protocol_pattern(r"pim(?:[\s-]*sm)?"), ["7761"]),
+    (_compile_protocol_pattern(r"mldv?2"), ["3810"]),
+    (_compile_protocol_pattern(r"mld"), ["3810"]),
+    (_compile_protocol_pattern(r"igmpv?3"), ["3376"]),
+    (_compile_protocol_pattern(r"igmp"), ["3376"]),
 )
 
 _UNSUPPORTED_VERSION_PATTERNS = (
-    re.compile(r"\bigmpv?2\b", re.IGNORECASE),
-    re.compile(r"\bmldv?1\b", re.IGNORECASE),
+    _compile_protocol_pattern(r"igmpv?2"),
+    _compile_protocol_pattern(r"mldv?1"),
 )
 
 

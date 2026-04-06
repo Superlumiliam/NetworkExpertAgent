@@ -28,9 +28,30 @@ class TestRFCAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["next_step"], "check_availability")
         mock_query_builder.assert_called_once()
 
+    @patch("src.agents.rfc_agent._build_search_query", return_value="PIM join prune interval default")
+    def test_analyze_supports_protocol_name_followed_by_chinese_text(self, mock_query_builder):
+        state = {"messages": [HumanMessage(content="PIM协议中join prune interval的默认值是多少？")]}
+
+        result = analyze(state)
+
+        self.assertEqual(result["target_rfc_ids"], ["7761"])
+        self.assertEqual(result["query"], "PIM join prune interval default")
+        self.assertEqual(result["next_step"], "check_availability")
+        mock_query_builder.assert_called_once()
+
     @patch("src.agents.rfc_agent._build_search_query")
     def test_analyze_old_version_returns_not_ingested(self, mock_query_builder):
         state = {"messages": [HumanMessage(content="IGMPv2 支持吗？")]}
+
+        result = analyze(state)
+
+        self.assertEqual(result["availability_status"], "not_ingested")
+        self.assertEqual(result["next_step"], "answer_not_ingested")
+        mock_query_builder.assert_not_called()
+
+    @patch("src.agents.rfc_agent._build_search_query")
+    def test_analyze_old_version_followed_by_chinese_text_returns_not_ingested(self, mock_query_builder):
+        state = {"messages": [HumanMessage(content="IGMPv2协议支持吗？")]}
 
         result = analyze(state)
 
