@@ -21,6 +21,7 @@
 - 通过 OpenAI-compatible Embedding API 生成向量
 - 支持命令行交互
 - 支持内置轻量 Web UI
+- 支持以 `api/` + `public/` + `vercel.json` 结构部署到 Vercel
 - 支持脚本化清库与 RFC 预加载
 
 ## 当前支持的协议范围
@@ -131,6 +132,14 @@ uv run network-expert-web
 
 - [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
+Vercel 部署结构：
+
+- `api/chat.py` 提供聊天接口
+- `api/health.py` 提供健康检查
+- `api/index.py` 提供首页 HTML
+- `public/app.css` 与 `public/app.js` 提供静态资源
+- `vercel.json` 保持 `/` 与 `/health` 对外路径不变
+
 ## 使用示例
 
 - `What is the default query interval in IGMPv3?`
@@ -157,6 +166,13 @@ uv run network-expert-web
 
 ```text
 NetworkExpertAgent/
+├── api/
+│   ├── chat.py                # Vercel 聊天函数入口
+│   ├── health.py              # Vercel 健康检查入口
+│   └── index.py               # Vercel 首页入口
+├── public/
+│   ├── app.css                # Web 静态样式
+│   └── app.js                 # Web 前端脚本
 ├── src/
 │   ├── main.py                 # CLI 入口与统一问题处理函数
 │   ├── agents/
@@ -173,7 +189,8 @@ NetworkExpertAgent/
 │   │   ├── rag_tools.py        # 向量库读写与检索
 │   │   └── rfc_tools.py        # RFC 下载、切分、预加载与查询拼装
 │   ├── web/
-│   │   └── server.py           # 轻量 Web 服务与前端页面
+│   │   ├── app.py              # 共享 Web 页面与 API 响应逻辑
+│   │   └── server.py           # 本地 Web server 入口
 ├── scripts/
 │   ├── clear_rfc_db.py         # 清空 RFC 向量库
 │   └── preload_rfcs.py         # 预加载支持范围内的 RFC
@@ -185,6 +202,7 @@ NetworkExpertAgent/
 │   ├── test_rag_tools.py
 │   └── test_scripts.py
 ├── pyproject.toml
+├── vercel.json
 └── uv.lock
 ```
 

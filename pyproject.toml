@@ -28,3 +28,5 @@ packages = ["src"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/core/protocol_specs.json" = "src/core/protocol_specs.json"
+"public/app.css" = "public/app.css"
+"public/app.js" = "public/app.js"
