@@ -11,7 +11,6 @@ os.environ["DEFAULT_MODEL"] = "dummy_model"
 os.environ["ENABLE_LANGSMITH_TRACING"] = "false"
 os.environ["SUPABASE_DB_URL"] = "postgresql://example"
 os.environ["SUPABASE_VECTOR_TABLE"] = "rfc_knowledge_base"
-os.environ["SUPABASE_VECTOR_MATCH_FUNCTION"] = "match_rfc_documents"
 os.environ["SUPABASE_VECTOR_DIM"] = "3"
 os.environ["SUPABASE_VECTOR_DISTANCE"] = "cosine"
 
@@ -64,7 +63,6 @@ class TestRagTools(unittest.TestCase):
     def setUp(self):
         rag_tools.cfg.SUPABASE_VECTOR_DIM = 3
         rag_tools.cfg.SUPABASE_VECTOR_TABLE = "rfc_knowledge_base"
-        rag_tools.cfg.SUPABASE_VECTOR_MATCH_FUNCTION = "match_rfc_documents"
         rag_tools.cfg.SUPABASE_VECTOR_DISTANCE = "cosine"
 
     @patch("src.tools.rag_tools.get_embeddings")
@@ -133,13 +131,14 @@ class TestRagTools(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertIsInstance(results[0], Document)
         self.assertEqual(results[0].metadata["rfc_id"], "7540")
-        self.assertIn("FROM public.match_rfc_documents", cursor.executed[0][0])
+        self.assertIn("FROM public.rfc_knowledge_base", cursor.executed[0][0])
+        self.assertIn("ORDER BY embedding <=>", cursor.executed[0][0])
         self.assertIn("::extensions.vector", cursor.executed[0][0])
         self.assertIn("::integer", cursor.executed[0][0])
         self.assertIn("::text[]", cursor.executed[0][0])
         self.assertEqual(
             cursor.executed[0][1],
-            ([0.1, 0.2, 0.3], 3, ["3376"]),
+            [[0.1, 0.2, 0.3], ["3376"], [0.1, 0.2, 0.3], 3],
         )
 
     @patch("src.tools.rag_tools._get_db_connection")

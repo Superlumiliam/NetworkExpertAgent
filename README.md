@@ -45,7 +45,6 @@ An advanced AI Agent specializing in network protocols and RFCs, powered by RAG 
     # Supabase pgvector
     SUPABASE_DB_URL=postgresql://postgres.<project-ref>:<YOUR_DB_PASSWORD>@aws-0-<region>.pooler.supabase.com:6543/postgres?sslmode=require
     SUPABASE_VECTOR_TABLE=rfc_knowledge_base
-    SUPABASE_VECTOR_MATCH_FUNCTION=match_rfc_documents
     SUPABASE_VECTOR_DIM=1536
     SUPABASE_VECTOR_DISTANCE=cosine
     ```

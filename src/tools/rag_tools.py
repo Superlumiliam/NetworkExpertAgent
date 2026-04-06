@@ -28,8 +28,6 @@ def _get_db_connection():
         missing.append("SUPABASE_DB_URL")
     if not cfg.SUPABASE_VECTOR_TABLE:
         missing.append("SUPABASE_VECTOR_TABLE")
-    if not cfg.SUPABASE_VECTOR_MATCH_FUNCTION:
-        missing.append("SUPABASE_VECTOR_MATCH_FUNCTION")
     if missing:
         missing_vars = ", ".join(missing)
         raise RuntimeError(
@@ -290,23 +288,35 @@ def query_knowledge_base(
     rfc_ids: Optional[List[str]] = None,
 ) -> List[Document]:
     """Query the Supabase vector database for relevant documents."""
-    function_name = _validate_identifier(
-        cfg.SUPABASE_VECTOR_MATCH_FUNCTION,
-        "SUPABASE_VECTOR_MATCH_FUNCTION",
-    )
+    table_name = _validate_identifier(cfg.SUPABASE_VECTOR_TABLE, "SUPABASE_VECTOR_TABLE")
     query_embedding = get_embeddings().embed_query(query)
     _assert_vector_dimension(query_embedding)
     filter_rfc_ids = sorted({str(rfc_id).strip() for rfc_id in rfc_ids}) if rfc_ids else None
+    limited_results = max(1, min(int(n_results), 50))
 
     with _get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
-                SELECT id, content, metadata, similarity
-                FROM public.{function_name}(%s::extensions.vector, %s::integer, %s::text[])
-                """,
-                (_vector_value(query_embedding), n_results, filter_rfc_ids),
-            )
+            query_sql = f"""
+                SELECT
+                    id,
+                    content,
+                    metadata,
+                    1 - (embedding <=> %s::extensions.vector) AS similarity
+                FROM public.{table_name}
+            """
+            params: list[Any] = [_vector_value(query_embedding)]
+
+            if filter_rfc_ids:
+                query_sql += " WHERE rfc_id = ANY(%s::text[])"
+                params.append(filter_rfc_ids)
+
+            query_sql += """
+                ORDER BY embedding <=> %s::extensions.vector
+                LIMIT %s::integer
+            """
+            params.extend([_vector_value(query_embedding), limited_results])
+
+            cur.execute(query_sql, params)
             rows = cur.fetchall()
 
     return [
