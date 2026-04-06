@@ -194,11 +194,23 @@ uv run python -m unittest tests.test_agents tests.test_rag_tools tests.test_scri
 uv run python tests/benchmark.py
 ```
 
+运行单题完整流程回归测试：
+
+```bash
+uv run python tests/test_single_quiz.py
+```
+
 Benchmark 特点：
 
 - 使用 `tests/quiz.md` 中的问题集
 - 通过 LLM judge 评估答案语义准确率
 - 最终得分 = 准确率 `70%` + 耗时 `30%`
+
+单题回归测试特点：
+
+- 只执行 `tests/quiz.md` 中的 `Question 1`
+- 仍然走完整的路由、RFC 检索、答案生成、LLM judge 评估流程
+- 若主流程报错、准确率低于 `8/10`，或耗时评级为 `不及格`，脚本会以非零状态退出
 
 当前耗时评分阈值：
 

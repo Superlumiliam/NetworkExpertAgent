@@ -3,7 +3,7 @@ import time
 import re
 import sys
 import os
-from typing import Dict, List
+from typing import Any, Dict, List
 
 # Add project root to path
 sys.path.append(os.getcwd())
@@ -19,6 +19,9 @@ from tests.benchmark_metrics import (
     combine_weighted_score,
     evaluate_time,
 )
+
+
+QUIZ_PATH = "tests/quiz.md"
 
 async def evaluate_answer(question: str, expected: str, actual: str) -> int:
     """
@@ -79,11 +82,58 @@ def parse_quiz(file_path: str) -> List[Dict[str, str]]:
             
     return questions
 
+
+async def run_single_question(
+    question: str,
+    expected: str,
+    question_number: int = 1,
+) -> Dict[str, Any]:
+    """Run the full benchmark flow for a single question."""
+    print(f"\nProcessing Q{question_number}: {question}")
+
+    start_time = time.time()
+    try:
+        actual = await process_question(question)
+    except Exception as e:
+        actual = f"Error: {e}"
+    end_time = time.time()
+
+    duration = end_time - start_time
+
+    accuracy_score = await evaluate_answer(question, expected, actual)
+    time_evaluation = evaluate_time(duration)
+    final_score = combine_weighted_score(accuracy_score, time_evaluation.score)
+
+    print(
+        f"Time: {duration:.2f}s | "
+        f"Accuracy: {accuracy_score}/10 | "
+        f"Time Grade: {time_evaluation.label} ({time_evaluation.score}/10) | "
+        f"Final: {final_score:.2f}/10"
+    )
+    print(
+        "Time Thresholds: "
+        f"excellent <= {time_evaluation.excellent_threshold:.2f}s, "
+        f"good <= {time_evaluation.good_threshold:.2f}s, "
+        f"pass <= {time_evaluation.pass_threshold:.2f}s"
+    )
+    print(f"Actual Answer: {actual[:100]}...")
+
+    return {
+        "question": question,
+        "expected": expected,
+        "actual": actual,
+        "accuracy_score": accuracy_score,
+        "time_score": time_evaluation.score,
+        "time_rating": time_evaluation.rating,
+        "time_rating_label": time_evaluation.label,
+        "final_score": final_score,
+        "time": duration,
+    }
+
 async def run_benchmark():
     """Run the benchmark with accuracy and fixed-threshold time scoring."""
     print("Starting Benchmark...")
-    quiz_path = "tests/quiz.md"
-    questions = parse_quiz(quiz_path)
+    questions = parse_quiz(QUIZ_PATH)
     print("Fixed Time Thresholds: 0-30s=优秀, 30-60s=良好, 60-120s=及格, >120s=不及格")
     
     total_accuracy_score = 0
@@ -99,51 +149,25 @@ async def run_benchmark():
     results = []
     
     for i, item in enumerate(questions):
-        q = item['question']
-        expected = item['expected']
-        
-        print(f"\nProcessing Q{i+1}: {q}")
-        
-        start_time = time.time()
-        try:
-            actual = await process_question(q)
-        except Exception as e:
-            actual = f"Error: {e}"
-        end_time = time.time()
-        
-        duration = end_time - start_time
-        total_time += duration
-        
-        accuracy_score = await evaluate_answer(q, expected, actual)
-        time_evaluation = evaluate_time(duration)
-        final_score = combine_weighted_score(accuracy_score, time_evaluation.score)
+        result = await run_single_question(
+            item["question"],
+            item["expected"],
+            question_number=i + 1,
+        )
 
-        total_accuracy_score += accuracy_score
-        total_time_score += time_evaluation.score
-        total_final_score += final_score
-        rating_counts[time_evaluation.rating] += 1
-        
-        print(
-            f"Time: {duration:.2f}s | "
-            f"Accuracy: {accuracy_score}/10 | "
-            f"Time Grade: {time_evaluation.label} ({time_evaluation.score}/10) | "
-            f"Final: {final_score:.2f}/10"
-        )
-        print(
-            "Time Thresholds: "
-            f"excellent <= {time_evaluation.excellent_threshold:.2f}s, "
-            f"good <= {time_evaluation.good_threshold:.2f}s, "
-            f"pass <= {time_evaluation.pass_threshold:.2f}s"
-        )
-        print(f"Actual Answer: {actual[:100]}...")
-        
+        total_time += result["time"]
+        total_accuracy_score += result["accuracy_score"]
+        total_time_score += result["time_score"]
+        total_final_score += result["final_score"]
+        rating_counts[result["time_rating"]] += 1
+
         results.append({
-            "question": q,
-            "accuracy_score": accuracy_score,
-            "time_score": time_evaluation.score,
-            "time_rating": time_evaluation.label,
-            "final_score": final_score,
-            "time": duration,
+            "question": result["question"],
+            "accuracy_score": result["accuracy_score"],
+            "time_score": result["time_score"],
+            "time_rating": result["time_rating_label"],
+            "final_score": result["final_score"],
+            "time": result["time"],
         })
         
     avg_accuracy_score = total_accuracy_score / len(questions) if questions else 0
