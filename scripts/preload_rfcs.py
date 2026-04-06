@@ -7,13 +7,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.core.rfc_catalog import SUPPORTED_RFC_IDS
-from src.tools.rfc_tools import preload_rfc_documents
+from src.core.rfc_catalog import get_supported_rfc_ids
+from src.tools.rfc_tools import ensure_rfc_knowledge_base_schema, preload_rfc_documents
 
 
 async def run() -> int:
-    print("Preloading RFCs:", ", ".join(SUPPORTED_RFC_IDS))
-    results = await preload_rfc_documents(SUPPORTED_RFC_IDS)
+    supported_rfc_ids = get_supported_rfc_ids()
+    print("Ensuring RFC knowledge base schema...")
+    await ensure_rfc_knowledge_base_schema()
+    print("Preloading RFCs:", ", ".join(supported_rfc_ids))
+    results = await preload_rfc_documents(supported_rfc_ids)
     for result in results:
         print(f"RFC {result['rfc_id']}: indexed {result['chunks']} chunks")
     print("RFC preload completed.")

@@ -1,0 +1,28 @@
+{
+  "protocols": [
+    {
+      "key": "igmp",
+      "display_name": "IGMP",
+      "latest_rfc_id": "3376",
+      "rfc_ids": ["3376"],
+      "supported_aliases": ["igmp", "igmpv3"],
+      "unsupported_aliases": ["igmpv1", "igmpv2"]
+    },
+    {
+      "key": "mld",
+      "display_name": "MLD",
+      "latest_rfc_id": "3810",
+      "rfc_ids": ["3810"],
+      "supported_aliases": ["mld", "mldv2"],
+      "unsupported_aliases": ["mldv1"]
+    },
+    {
+      "key": "pim",
+      "display_name": "PIM",
+      "latest_rfc_id": "7761",
+      "rfc_ids": ["7761"],
+      "supported_aliases": ["pim", "pim-sm"],
+      "unsupported_aliases": []
+    }
+  ]
+}

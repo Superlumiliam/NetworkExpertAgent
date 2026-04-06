@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 
 from src.core.state import AgentState
 import src.config.settings as cfg
-from src.core.rfc_catalog import NOT_INGESTED_MESSAGE, resolve_question_scope
+from src.core.rfc_catalog import get_not_ingested_message, resolve_question_scope
 from src.tools.rfc_tools import get_missing_rfc_ids, search_rfc_knowledge
 
 # Initialize LLM
@@ -75,7 +75,7 @@ async def check_availability(state: AgentState):
     if not target_rfc_ids:
         return {
             "availability_status": "not_ingested",
-            "availability_message": NOT_INGESTED_MESSAGE,
+            "availability_message": get_not_ingested_message(),
             "next_step": "answer_not_ingested",
         }
 
@@ -83,7 +83,7 @@ async def check_availability(state: AgentState):
     if missing_rfc_ids:
         return {
             "availability_status": "not_ingested",
-            "availability_message": NOT_INGESTED_MESSAGE,
+            "availability_message": get_not_ingested_message(),
             "next_step": "answer_not_ingested",
         }
 
@@ -105,7 +105,7 @@ async def search(state: AgentState):
 
 def answer_not_ingested(state: AgentState):
     """Return a fixed response for unsupported or not-preloaded protocols."""
-    message = state.get("availability_message") or NOT_INGESTED_MESSAGE
+    message = state.get("availability_message") or get_not_ingested_message()
     return {"messages": [AIMessage(content=message)]}
 
 

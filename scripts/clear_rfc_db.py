@@ -7,10 +7,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.tools.rfc_tools import clear_rfc_knowledge_base
+from src.tools.rfc_tools import clear_rfc_knowledge_base, ensure_rfc_knowledge_base_schema
 
 
 async def run() -> int:
+    print("Ensuring RFC knowledge base schema...")
+    await ensure_rfc_knowledge_base_schema()
     await clear_rfc_knowledge_base()
     print("RFC knowledge base cleared.")
     return 0

@@ -11,6 +11,31 @@ import src.config.settings as cfg
 
 _embeddings: Optional[OpenAIEmbeddings] = None
 
+_KNOWLEDGE_BASE_INIT_SQL = """
+create extension if not exists vector with schema extensions;
+create extension if not exists pgcrypto;
+
+create table if not exists public.{table_name} (
+  id uuid primary key default gen_random_uuid(),
+  content text not null,
+  metadata jsonb not null default '{{}}'::jsonb,
+  embedding extensions.vector not null,
+  rfc_id text generated always as (metadata->>'rfc_id') stored,
+  content_hash text not null,
+  created_at timestamptz not null default now(),
+  unique (rfc_id, content_hash)
+);
+
+create index if not exists {table_name}_rfc_id_idx
+  on public.{table_name} (rfc_id);
+
+create index if not exists {table_name}_embedding_hnsw_idx
+  on public.{table_name}
+  using hnsw (embedding extensions.vector_cosine_ops);
+
+alter table public.{table_name} enable row level security;
+"""
+
 
 def _validate_identifier(value: str, env_var_name: str) -> str:
     """Allow only simple SQL identifiers because table/function names come from env vars."""
@@ -66,6 +91,33 @@ def _get_db_connection():
     except Exception as exc:
         raise RuntimeError(_format_connection_error(normalized_db_url, exc)) from exc
     return conn
+
+
+def _connect_psycopg_raw():
+    """Open a plain psycopg connection before pgvector registration."""
+    if not cfg.SUPABASE_DB_URL:
+        raise RuntimeError(
+            "Supabase vector store is not configured. Missing SUPABASE_DB_URL. "
+            "Add it to your .env file before using RFC indexing/search."
+        )
+
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise RuntimeError(
+            "Supabase vector dependencies are not installed. Run `uv sync`."
+        ) from exc
+
+    normalized_db_url = _normalize_postgres_url(cfg.SUPABASE_DB_URL)
+    _validate_supabase_connection_string(normalized_db_url)
+
+    try:
+        return psycopg.connect(
+            normalized_db_url,
+            prepare_threshold=None,
+        )
+    except Exception as exc:
+        raise RuntimeError(_format_connection_error(normalized_db_url, exc)) from exc
 
 
 def _normalize_postgres_url(connection_string: str) -> str:
@@ -138,6 +190,20 @@ def _prepare_connection_for_pgvector(conn, register_vector) -> None:
     with conn.cursor() as cur:
         cur.execute("SET search_path TO public, extensions")
     register_vector(conn)
+
+
+def ensure_knowledge_base_schema() -> None:
+    """Create the pgvector extensions, table, and indexes if they do not exist."""
+    table_name = _validate_identifier(cfg.SUPABASE_VECTOR_TABLE, "SUPABASE_VECTOR_TABLE")
+
+    if cfg.SUPABASE_VECTOR_DISTANCE != "cosine":
+        raise RuntimeError(
+            "Unsupported SUPABASE_VECTOR_DISTANCE value. Only 'cosine' is supported."
+        )
+
+    with _connect_psycopg_raw() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_KNOWLEDGE_BASE_INIT_SQL.format(table_name=table_name))
 
 
 def _assert_vector_dimension(vector: List[float]) -> None:

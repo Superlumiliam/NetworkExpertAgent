@@ -13,6 +13,7 @@ from src.core.rfc_catalog import normalize_rfc_id
 from src.tools.rag_tools import (
     add_documents,
     clear_knowledge_base,
+    ensure_knowledge_base_schema,
     find_missing_rfcs,
     query_knowledge_base,
 )
@@ -397,6 +398,11 @@ async def preload_rfc_documents(rfc_ids: Sequence[str]) -> list[dict[str, Any]]:
 async def clear_rfc_knowledge_base() -> None:
     """Remove all RFC content from the knowledge base."""
     await asyncio.to_thread(clear_knowledge_base)
+
+
+async def ensure_rfc_knowledge_base_schema() -> None:
+    """Ensure the RFC knowledge base schema exists before maintenance tasks run."""
+    await asyncio.to_thread(ensure_knowledge_base_schema)
 
 
 async def get_missing_rfc_ids(rfc_ids: Sequence[str]) -> list[str]:

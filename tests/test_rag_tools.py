@@ -239,6 +239,20 @@ class TestRagTools(unittest.TestCase):
         self.assertIn("pgvector extension could not be found", message)
         self.assertIn("create extension if not exists vector", message)
 
+    @patch("src.tools.rag_tools._connect_psycopg_raw")
+    def test_ensure_knowledge_base_schema_creates_extensions_table_and_indexes(self, mock_connect):
+        cursor = FakeCursor()
+        mock_connect.return_value = FakeConnection(cursor)
+
+        rag_tools.ensure_knowledge_base_schema()
+
+        query, params = cursor.executed[0]
+        self.assertIsNone(params)
+        self.assertIn("create extension if not exists vector", query)
+        self.assertIn("create table if not exists public.rfc_knowledge_base", query)
+        self.assertIn("create index if not exists rfc_knowledge_base_rfc_id_idx", query)
+        self.assertIn("create index if not exists rfc_knowledge_base_embedding_hnsw_idx", query)
+
 
 if __name__ == "__main__":
     unittest.main()
