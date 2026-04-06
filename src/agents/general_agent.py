@@ -2,6 +2,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import src.config.settings as cfg
+from src.core.answer_format import coerce_structured_answer
 
 llm = ChatOpenAI(
     base_url=cfg.OPENROUTER_BASE_URL,
@@ -16,6 +17,16 @@ def general_chat(question: str) -> str:
     """
     system = """You are a helpful AI assistant. You can help with general questions, greetings, and casual conversation.
     If the user asks about technical networking details or RFCs, suggest they ask specifically about those topics so the expert agent can help.
+
+Return ONLY a JSON object with exactly these keys:
+- "结论"
+- "出处定位"
+- "协议原文节选"
+
+For general questions not based on RFC evidence:
+- Put the direct answer in "结论".
+- Set "出处定位" to "N/A".
+- Set "协议原文节选" to "N/A".
     """
     
     prompt = ChatPromptTemplate.from_messages([
@@ -24,5 +35,10 @@ def general_chat(question: str) -> str:
     ])
     
     chain = prompt | llm | StrOutputParser()
-    
-    return chain.invoke({"question": question})
+
+    response = chain.invoke({"question": question})
+    return coerce_structured_answer(
+        response,
+        default_source="N/A",
+        default_quote="N/A",
+    )

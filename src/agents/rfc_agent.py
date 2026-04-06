@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph, END
 
 from src.core.state import AgentState
 import src.config.settings as cfg
+from src.core.answer_format import coerce_structured_answer
 from src.core.rfc_catalog import get_not_ingested_message, resolve_question_scope
 from src.tools.rfc_tools import get_missing_rfc_ids, search_rfc_knowledge
 
@@ -106,7 +107,19 @@ async def search(state: AgentState):
 def answer_not_ingested(state: AgentState):
     """Return a fixed response for unsupported or not-preloaded protocols."""
     message = state.get("availability_message") or get_not_ingested_message()
-    return {"messages": [AIMessage(content=message)]}
+    return {
+        "messages": [
+            AIMessage(
+                content=coerce_structured_answer(
+                    {
+                        "结论": message,
+                        "出处定位": "未定位到已预载的 RFC 编号与 section。",
+                        "协议原文节选": "当前知识库没有可核对的协议原文节选。",
+                    }
+                )
+            )
+        ]
+    }
 
 
 def answer(state: AgentState):
@@ -115,10 +128,20 @@ def answer(state: AgentState):
     question = messages[-1].content
     context = state.get("context", "")
 
-    system = """You are an expert network engineer. Answer the user's question based on the provided context.
-    Prefer facts that are explicitly supported by the provided context.
-    If the context is insufficient, say that the current preloaded RFC context does not contain enough information.
-    """
+    system = """You are an expert network engineer. Answer the user's question strictly based on the provided RFC context.
+
+Return ONLY a JSON object with exactly these keys:
+- "结论"
+- "出处定位"
+- "协议原文节选"
+
+Rules:
+1. "结论" must be a concise Chinese answer to the user's question.
+2. "出处定位" must include the RFC number and section/appx identifier, preferably in the format "RFC xxxx Section x.y" or "RFC xxxx Appendix A".
+3. "协议原文节选" must be a verbatim quote copied from the provided context, not a paraphrase.
+4. If the context is insufficient, say so in "结论", and use "未找到明确出处" / "未找到可核对的协议原文节选。"
+5. Do not invent RFC numbers, sections, or quotes.
+"""
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", system),
@@ -128,7 +151,13 @@ def answer(state: AgentState):
     chain = prompt | llm | StrOutputParser()
 
     response = chain.invoke({"context": context, "question": question})
-    return {"messages": [AIMessage(content=response)]}
+    normalized_response = coerce_structured_answer(
+        response,
+        default_conclusion="当前预载的 RFC 上下文不足以回答这个问题。",
+        default_source="未找到明确出处",
+        default_quote="未找到可核对的协议原文节选。",
+    )
+    return {"messages": [AIMessage(content=normalized_response)]}
 
 # Graph Construction
 workflow = StateGraph(AgentState)

@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 
 
-ACCURACY_WEIGHT = 0.7
-TIME_WEIGHT = 0.3
+CONCLUSION_WEIGHT = 0.4
+SOURCE_WEIGHT = 0.2
+CONFIDENCE_WEIGHT = 0.2
+TIME_WEIGHT = 0.2
 
 TIME_THRESHOLDS = {
     "excellent": 30.0,
@@ -61,15 +63,24 @@ def evaluate_time(duration: float) -> TimeEvaluation:
 
 
 def combine_weighted_score(
-    accuracy_score: float,
+    conclusion_score: float,
+    source_score: float,
+    confidence_score: float,
     time_score: float,
-    accuracy_weight: float = ACCURACY_WEIGHT,
+    conclusion_weight: float = CONCLUSION_WEIGHT,
+    source_weight: float = SOURCE_WEIGHT,
+    confidence_weight: float = CONFIDENCE_WEIGHT,
     time_weight: float = TIME_WEIGHT,
 ) -> float:
-    """Combine accuracy and runtime into a single 0-10 score."""
-    total_weight = accuracy_weight + time_weight
+    """Combine structured-answer metrics and runtime into a single 0-10 score."""
+    total_weight = conclusion_weight + source_weight + confidence_weight + time_weight
     if total_weight <= 0:
         raise ValueError("Total score weight must be positive.")
 
-    weighted_total = (accuracy_score * accuracy_weight) + (time_score * time_weight)
+    weighted_total = (
+        (conclusion_score * conclusion_weight)
+        + (source_score * source_weight)
+        + (confidence_score * confidence_weight)
+        + (time_score * time_weight)
+    )
     return weighted_total / total_weight
